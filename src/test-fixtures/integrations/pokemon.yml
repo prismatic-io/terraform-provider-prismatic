@@ -1,0 +1,95 @@
+description: Gotta catch 'em all!
+isSynchronous: false
+name: Pokémon
+requiredConfigVars:
+  pokemonUrl: 'https://pokeapi.co/api/v2/pokemon/25/'
+steps:
+  - action:
+      componentKey: http
+      key: httpGet
+    description: Gets the details for a pokemon
+    inputs:
+      responseType:
+        type: value
+        value: json
+      url:
+        type: configVar
+        value: pokemonUrl
+    name: pokemon_details
+  - action:
+      componentKey: http
+      key: httpGet
+    description: Downloads the pokemon sprite
+    inputs:
+      responseType:
+        type: value
+        value: binary
+      url:
+        type: reference
+        value: pokemonDetails.results.sprites.front_default
+    name: download_sprite
+  - action:
+      componentKey: code
+      key: runCode
+    description: Constructs the destination paths for the sprite and abilities files
+    inputs:
+      code:
+        type: value
+        value: >
+          module.exports = async (context, { pokemonDetails: { results: { name }
+          } }) => {
+            const dt = new Date();
+            const date = `${dt.getFullYear()}${dt.getMonth() + 1}${dt.getDate()}_${dt.getHours()}${dt.getMinutes()}${dt.getSeconds()}`;
+            return { data: {
+              spritePath: `/Pokémon Mock Integration/${date}_${name}_avatar.png`,
+              abilitiesPath: `/Pokémon Mock Integration/${date}_${name}_abilities.txt`,
+            } };
+          };
+    name: build_destination_paths
+  - action:
+      componentKey: dropbox
+      key: uploadFile
+    description: Uploads the pokemon sprite to Dropbox
+    inputs:
+      fileContents:
+        type: reference
+        value: downloadSprite.results
+      path:
+        type: reference
+        value: buildDestinationPaths.results.spritePath
+    name: upload_sprite
+  - action:
+      componentKey: code
+      key: runCode
+    description: >-
+      Joins the list of pokemon abilities to a comma-separate list using a code
+      component
+    inputs:
+      code:
+        type: value
+        value: |
+          module.exports = async (context, { pokemonDetails }) => {
+            const abilities = pokemonDetails.results.abilities
+              .map(({ ability: { name } }) => name)
+              .join(", ");
+            return { data: { data: abilities } };
+          };
+    name: assemble_abilities
+  - action:
+      componentKey: dropbox
+      key: uploadFile
+    description: Uploads the pokemon abilities to Dropbox as a text file
+    inputs:
+      fileContents:
+        type: reference
+        value: assembleAbilities.results
+      path:
+        type: reference
+        value: buildDestinationPaths.results.abilitiesPath
+    name: upload_abilities
+trigger:
+  description: >-
+    Kicks off fetching of Pokémon data (including sprite) and uploading to
+    Dropbox
+  name: trigger
+  schedule: null

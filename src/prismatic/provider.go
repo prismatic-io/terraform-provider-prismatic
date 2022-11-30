@@ -25,13 +25,15 @@ func Provider() *schema.Provider {
 		},
 		ConfigureContextFunc: providerConfigure,
 		ResourcesMap: map[string]*schema.Resource{
-			"prismatic_component":   resourceComponent(),
-			"prismatic_integration": resourceIntegration(),
+			"prismatic_component":                resourceComponent(),
+			"prismatic_integration":              resourceIntegration(),
+			"prismatic_organization_signing_key": resourceOrganizationSigningKey(),
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"prismatic_component_bundle": dataSourceComponentBundle(),
-			"prismatic_components":       dataSourceComponents(),
-			"prismatic_integrations":     dataSourceIntegrations(),
+			"prismatic_component_bundle":         dataSourceComponentBundle(),
+			"prismatic_components":               dataSourceComponents(),
+			"prismatic_integrations":             dataSourceIntegrations(),
+			"prismatic_organization_signing_key": dataSourceOrganizationSigningKey(),
 		},
 	}
 }

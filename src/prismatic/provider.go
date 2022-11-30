@@ -29,9 +29,10 @@ func Provider() *schema.Provider {
 			"prismatic_integration": resourceIntegration(),
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"prismatic_component_bundle": dataSourceComponentBundle(),
-			"prismatic_components":       dataSourceComponents(),
-			"prismatic_integrations":     dataSourceIntegrations(),
+			"prismatic_component_bundle":          dataSourceComponentBundle(),
+			"prismatic_components":                dataSourceComponents(),
+			"prismatic_integrations":              dataSourceIntegrations(),
+			"prismatic_organizations_signing_key": dataSourceOrganizationsSigningKey(),
 		},
 	}
 }

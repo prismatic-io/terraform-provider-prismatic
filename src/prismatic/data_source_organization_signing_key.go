@@ -6,11 +6,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/shurcooL/graphql"
+	"log"
 )
 
-func dataSourceOrganizationsSigningKey() *schema.Resource {
+func dataSourceOrganizationSigningKey() *schema.Resource {
 	return &schema.Resource{
-		ReadContext: dataSourceOrganizationsSigningKeyRead,
+		ReadContext: dataSourceOrganizationSigningKeyRead,
 		Schema: map[string]*schema.Schema{
 			"id": {
 				Type:     schema.TypeString,
@@ -32,7 +33,7 @@ func dataSourceOrganizationsSigningKey() *schema.Resource {
 	}
 }
 
-func dataSourceOrganizationsSigningKeyRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func dataSourceOrganizationSigningKeyRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*graphql.Client)
 
 	var diags diag.Diagnostics
@@ -66,6 +67,12 @@ func dataSourceOrganizationsSigningKeyRead(ctx context.Context, d *schema.Resour
 			targetSigningKey["imported"] = signingKey.Imported
 			break
 		}
+	}
+
+	if !d.IsNewResource() && targetSigningKey["id"] == nil {
+		log.Printf("organization signing key (%s) not found!", targetID)
+		d.SetId("")
+		return nil
 	}
 
 	for key, value := range targetSigningKey {

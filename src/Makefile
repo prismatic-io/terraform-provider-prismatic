@@ -1,5 +1,5 @@
 BINARY=terraform-provider-prismatic
-VERSION=0.1.0
+VERSION=0.1.1
 
 init:
 	go get

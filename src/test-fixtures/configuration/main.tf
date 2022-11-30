@@ -2,7 +2,7 @@ terraform {
   required_providers {
     prismatic = {
       source = "terraform.prismatic.io/prismatic-io/prismatic"
-      version = "~> 0.1.0"
+      version = "~> 0.1.1"
     }
   }
 }

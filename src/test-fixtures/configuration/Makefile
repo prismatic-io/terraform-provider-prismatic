@@ -1,4 +1,4 @@
-plugin_dir=terraform.d/plugins/terraform.prismatic.io/prismatic-io/prismatic/0.1.0/darwin_amd64
+plugin_dir=terraform.d/plugins/terraform.prismatic.io/prismatic-io/prismatic/0.1.1/darwin_amd64
 name=terraform-provider-prismatic
 
 build:

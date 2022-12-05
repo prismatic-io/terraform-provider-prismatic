@@ -3,4 +3,14 @@ bin/
 bin/*
 
 # Ignore test data
-test
+*.zip
+*.lock.hcl
+*.lock.info
+*.log
+*.tfstate
+*.tfstate.backup
+*.tfplan
+.terraform
+
+# Ignore IDE files
+.idea

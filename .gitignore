@@ -1,0 +1,6 @@
+# Don't check in packages
+bin/
+bin/*
+
+# Ignore test data
+test

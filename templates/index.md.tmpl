@@ -16,6 +16,12 @@ Use the navigation to the left to read about the available resources and data so
 
 {{ tffile "examples/provider/provider.tf" }}
 
+In case you need to use a refresh token to get automatically a headless access token you can use:
+
+{{ tffile "examples/provider/provider_with_refresh_token.tf" }}
+
+In this case the token provided is not going to be used.
+
 ~> Hard-coding credentials into any Terraform configuration is not recommended and risks secret leakage should this
 file ever be committed to a public version control system. See [Environment Variables](#environment-variables) for a
 better alternative.
@@ -24,7 +30,7 @@ better alternative.
 
 ## Environment Variables
 
-You can provide your credentials using the `PRISMATIC_URL` and `PRISMATIC_TOKEN` environment variables.
+You can provide your credentials using the `PRISMATIC_URL` and `PRISMATIC_TOKEN` environment variables. Or if you need to use a refresh token you can use `PRISMATIC_URL` and `PRISMATIC_REFRESH_TOKEN` environment variables, remember the `PRISMATIC_TOKEN` is going to be ignored in that case.
 
 {{ tffile "examples/provider/provider_with_env_vars.tf" }}
 

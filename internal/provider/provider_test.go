@@ -23,8 +23,8 @@ func testAccPreCheck(t *testing.T) {
 		t.Fatal("PRISMATIC_URL must be set for acceptance tests")
 	}
 
-	if v := os.Getenv("PRISMATIC_TOKEN"); v == "" {
-		t.Fatal("PRISMATIC_TOKEN must be set for acceptance tests")
+	if os.Getenv("PRISMATIC_TOKEN") == "" && os.Getenv("PRISMATIC_REFRESH_TOKEN") == "" {
+		t.Fatal("Either PRISMATIC_TOKEN or PRISMATIC_REFRESH_TOKEN must be set for acceptance tests")
 	}
 
 	err := testAccProvider.Configure(context.Background(), terraform.NewResourceConfigRaw(nil))

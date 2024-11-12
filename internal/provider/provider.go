@@ -1,15 +1,17 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/shurcooL/graphql"
 	"golang.org/x/oauth2"
-	"net/http"
-	"net/url"
 )
 
 func New(version string) func() *schema.Provider {
@@ -54,6 +56,10 @@ func New(version string) func() *schema.Provider {
 	}
 }
 
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
 func configure(version string, p *schema.Provider) func(context.Context, *schema.ResourceData) (any, diag.Diagnostics) {
 	return func(ctx context.Context, d *schema.ResourceData) (any, diag.Diagnostics) {
 		baseUrl := d.Get("url").(string)
@@ -86,16 +92,16 @@ func configure(version string, p *schema.Provider) func(context.Context, *schema
 			return nil, diag.FromErr(err)
 		}
 
-		u.Path = "api"
-		apiUrl := u.String()
-
 		if refreshToken != "" {
-			accessToken, err := refreshAccessToken(apiUrl, refreshToken)
+			accessToken, err := refreshAccessToken(u, RefreshTokenRequest{RefreshToken: refreshToken})
 			if err != nil {
 				return nil, diag.FromErr(err)
 			}
 			token = *accessToken
 		}
+
+		u.Path = "api"
+		apiUrl := u.String()
 
 		src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 		httpClient := oauth2.NewClient(context.Background(), src)
@@ -105,8 +111,16 @@ func configure(version string, p *schema.Provider) func(context.Context, *schema
 	}
 }
 
-func refreshAccessToken(apiUrl string, refreshToken string) (*string, error) {
-	resp, err := http.PostForm(apiUrl, url.Values{"refresh_token": {refreshToken}})
+func refreshAccessToken(baseUrl *url.URL, refreshToken RefreshTokenRequest) (*string, error) {
+	baseUrl.Path = "/auth/refresh"
+	apiUrl := baseUrl.String()
+
+	body, err := json.Marshal(refreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := http.Post(apiUrl, "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
 	}

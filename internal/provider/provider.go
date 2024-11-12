@@ -31,7 +31,7 @@ func New(version string) func() *schema.Provider {
 				"refresh_token": {
 					Type:        schema.TypeString,
 					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("PRISM_REFRESH_TOKEN", ""),
+					DefaultFunc: schema.EnvDefaultFunc("PRISMATIC_REFRESH_TOKEN", ""),
 					Description: "A [refresh token to use for headless authentication](https://prismatic.io/docs/cli/cli-usage/#headless-prism-usage-for-cicd-pipelines), of Prismatic API calls. Token parameter is not going to be used if refresh token is provided, a new access token will be requested using the refresh token provided.",
 				},
 			},
@@ -73,7 +73,7 @@ func configure(version string, p *schema.Provider) func(context.Context, *schema
 			diags = append(diags, diag.Diagnostic{
 				Severity: diag.Error,
 				Summary:  "Unable to create a Prismatic client",
-				Detail:   "Unable to create a Prismatic client without an authorization token or a refresh token. Please either pass in an authorization token or a refresh_token to the Prismatic provider. Optionally, you can set a environment variable, PRISMATIC_TOKEN or PRISM_REFRESH_TOKEN",
+				Detail:   "Unable to create a Prismatic client without an authorization token or a refresh token. Please either pass in an authorization token or a refresh_token to the Prismatic provider. Optionally, you can set a environment variable, PRISMATIC_TOKEN or PRISMATIC_REFRESH_TOKEN",
 			})
 		}
 

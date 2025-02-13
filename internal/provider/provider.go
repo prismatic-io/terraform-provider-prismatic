@@ -28,13 +28,13 @@ func New(version string) func() *schema.Provider {
 					Type:        schema.TypeString,
 					Optional:    true,
 					DefaultFunc: schema.EnvDefaultFunc("PRISMATIC_TOKEN", ""),
-					Description: "An [access token to use for headless authentication](https://prismatic.io/docs/cli/cli-usage/#headless-prism-usage-for-cicd-pipelines) of Prismatic API calls. Refresh token parameter is not going to be used if token is provided.",
+					Description: "Access token use has been deprecated in favor of using refresh tokens. Please migrate provider configuration to use the new refresh_token attribute instead.",
 				},
 				"refresh_token": {
 					Type:        schema.TypeString,
 					Optional:    true,
 					DefaultFunc: schema.EnvDefaultFunc("PRISMATIC_REFRESH_TOKEN", ""),
-					Description: "A [refresh token to use for headless authentication](https://prismatic.io/docs/cli/cli-usage/#headless-prism-usage-for-cicd-pipelines), of Prismatic API calls. Token parameter is not going to be used if refresh token is provided, a new access token will be requested using the refresh token provided.",
+					Description: "A [refresh token to use for headless authentication](https://prismatic.io/docs/cli/cli-usage/#headless-prism-usage-for-cicd-pipelines) to the Prismatic API.",
 				},
 			},
 			ResourcesMap: map[string]*schema.Resource{

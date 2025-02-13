@@ -16,8 +16,8 @@ Use the navigation to the left to read about the available resources and data so
 
 ```terraform
 provider "prismatic" {
-  url   = "<domain>"
-  token = "<token>"
+  url           = "<domain>"
+  refresh_token = "<token>"
 }
 ```
 
@@ -30,12 +30,13 @@ better alternative.
 
 ### Optional
 
-- `token` (String) An [access token to use for headless authentication](https://prismatic.io/docs/cli/cli-usage/#headless-prism-usage-for-cicd-pipelines) of Prismatic API calls.
+- `refresh_token` (String) A [refresh token to use for headless authentication](https://prismatic.io/docs/cli/cli-usage/#headless-prism-usage-for-cicd-pipelines) to the Prismatic API.
+- `token` (String) Access token use has been deprecated in favor of using refresh tokens. Please migrate provider configuration to use the new refresh_token attribute instead.
 - `url` (String) URL of the Prismatic stack to communicate with. Defaults to the value of the `PRISMATIC_URL` environment variable.
 
 ## Environment Variables
 
-You can provide your credentials using the `PRISMATIC_URL` and `PRISMATIC_TOKEN` environment variables.
+You can provide your credentials using the `PRISMATIC_URL` and `PRISMATIC_REFRESH_TOKEN` environment variables.
 
 ```terraform
 provider "prismatic" {}
@@ -44,7 +45,7 @@ provider "prismatic" {}
 ### Example Usage
 ```shell
 PRISMATIC_URL="<domain>" \
-PRISMATIC_TOKEN="<token>" \
+PRISMATIC_REFRESH_TOKEN="<token>" \
 terraform plan
 ```
 

@@ -1,4 +1,4 @@
 provider "prismatic" {
-  url   = "<domain>"
-  token = "<token>"
+  url           = "<domain>"
+  refresh_token = "<token>"
 }

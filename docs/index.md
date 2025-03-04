@@ -30,8 +30,8 @@ better alternative.
 
 ### Optional
 
-- `refresh_token` (String) A [refresh token to use for headless authentication](https://prismatic.io/docs/cli/cli-usage/#headless-prism-usage-for-cicd-pipelines) to the Prismatic API.
-- `token` (String) Access token use has been deprecated in favor of using refresh tokens. Please migrate provider configuration to use the new refresh_token attribute instead.
+- `refresh_token` (String) A [refresh token to use for headless authentication](https://prismatic.io/docs/cli/bash-scripting/#headless-prism-usage-for-cicd-pipelines) to the Prismatic API.
+- `token` (String, Deprecated) An [access token obtained with Prism CLI](https://prismatic.io/docs/cli/prism/#metoken) of Prismatic API calls.
 - `url` (String) URL of the Prismatic stack to communicate with. Defaults to the value of the `PRISMATIC_URL` environment variable.
 
 ## Environment Variables

@@ -2,8 +2,10 @@ package provider
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/prismatic-io/terraform-provider-prismatic/internal/util"
@@ -44,10 +46,11 @@ func resourceOrganizationUser() *schema.Resource {
 				Description: "The ID of the role to assign to the user.",
 			},
 			"phone": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Computed:    true,
-				Description: "The phone number of the user. Note: The API normalizes phone numbers to E.164 format.",
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				ValidateDiagFunc: validateE164Phone,
+				Description:      "The phone number of the user in E.164 format (e.g., +14155552671). Must start with '+' followed by 7-15 digits.",
 			},
 			"external_id": {
 				Type:        schema.TypeString,
@@ -73,6 +76,29 @@ func resourceOrganizationUser() *schema.Resource {
 			},
 		},
 	}
+}
+
+// validateE164Phone validates that a phone number is in E.164 format.
+func validateE164Phone(v interface{}, path cty.Path) diag.Diagnostics {
+	var diags diag.Diagnostics
+	value := v.(string)
+
+	// Allow empty string since the field is optional
+	if value == "" {
+		return diags
+	}
+
+	// E.164 format: + followed by 7-15 digits, first digit cannot be 0
+	e164Regex := regexp.MustCompile(`^\+[1-9]\d{6,14}$`)
+	if !e164Regex.MatchString(value) {
+		diags = append(diags, diag.Diagnostic{
+			Severity: diag.Error,
+			Summary:  "Invalid phone number format",
+			Detail:   "Phone number must be in E.164 format (e.g., +14155552671). It must start with '+' followed by 7-15 digits, and the first digit after '+' cannot be 0.",
+		})
+	}
+
+	return diags
 }
 
 func resourceOrganizationUserCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -18,7 +19,15 @@ const (
 	testUserUpdatedName          = "Terraform Test User Updated"
 )
 
-func organizationUserConfig(email, name, roleRef string) string {
+func organizationUserConfig(email, name, roleRef, phone, externalID string) string {
+	optionalFields := ""
+	if phone != "" {
+		optionalFields += fmt.Sprintf("\n  phone       = %q", phone)
+	}
+	if externalID != "" {
+		optionalFields += fmt.Sprintf("\n  external_id = %q", externalID)
+	}
+
 	return fmt.Sprintf(`
 data "prismatic_organization_roles" "roles" {}
 
@@ -27,12 +36,11 @@ locals {
 }
 
 resource "prismatic_organization_user" "test" {
-  email       = "%s"
-  name        = "%s"
-  role        = %s
-  external_id = "EXT-TEST-001"
+  email = "%s"
+  name  = "%s"
+  role  = %s%s
 }
-`, email, name, roleRef)
+`, email, name, roleRef, optionalFields)
 }
 
 func TestAccResourceOrganizationUser_basic(t *testing.T) {
@@ -42,7 +50,7 @@ func TestAccResourceOrganizationUser_basic(t *testing.T) {
 		CheckDestroy:      testAccCheckOrganizationUserDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: organizationUserConfig(testUserEmail, testUserName, "local.admin_role.id"),
+				Config: organizationUserConfig(testUserEmail, testUserName, "local.admin_role.id", "", "EXT-TEST-001"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet(organizationUserResourceName, "id"),
 					resource.TestCheckResourceAttr(organizationUserResourceName, "email", testUserEmail),
@@ -70,13 +78,13 @@ func TestAccResourceOrganizationUser_update(t *testing.T) {
 		CheckDestroy:      testAccCheckOrganizationUserDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: organizationUserConfig(testUserEmail, testUserName, "local.admin_role.id"),
+				Config: organizationUserConfig(testUserEmail, testUserName, "local.admin_role.id", "", "EXT-TEST-001"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(organizationUserResourceName, "name", testUserName),
 				),
 			},
 			{
-				Config: organizationUserConfig(testUserEmail, testUserUpdatedName, "local.admin_role.id"),
+				Config: organizationUserConfig(testUserEmail, testUserUpdatedName, "local.admin_role.id", "", "EXT-TEST-001"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(organizationUserResourceName, "name", testUserUpdatedName),
 				),
@@ -106,4 +114,51 @@ func testAccCheckOrganizationUserDestroy(s *terraform.State) error {
 	}
 
 	return nil
+}
+
+func TestAccResourceOrganizationUser_invalidPhoneFormat(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				Config:      organizationUserConfig(testUserEmail, testUserName, "local.admin_role.id", "12345", ""),
+				ExpectError: regexp.MustCompile(`Invalid phone number format`),
+			},
+			{
+				Config:      organizationUserConfig(testUserEmail, testUserName, "local.admin_role.id", "+0123456789", ""),
+				ExpectError: regexp.MustCompile(`Invalid phone number format`),
+			},
+		},
+	})
+}
+
+func TestValidateE164Phone(t *testing.T) {
+	testCases := []struct {
+		name        string
+		phone       string
+		expectError bool
+	}{
+		{"valid US number", "+14155552671", false},
+		{"valid min length", "+1234567", false},
+		{"valid max length", "+123456789012345", false},
+		{"empty string", "", false},
+		{"missing plus", "14155552671", true},
+		{"starts with zero", "+0123456789", true},
+		{"too short", "+123456", true},
+		{"too long", "+1234567890123456", true},
+		{"only plus", "+", true},
+		{"letters included", "+1415abc2671", true},
+		{"spaces included", "+1 415 555 2671", true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			diags := validateE164Phone(tc.phone, nil)
+			hasError := diags.HasError()
+			if hasError != tc.expectError {
+				t.Errorf("validateE164Phone(%q): expected error=%v, got error=%v", tc.phone, tc.expectError, hasError)
+			}
+		})
+	}
 }

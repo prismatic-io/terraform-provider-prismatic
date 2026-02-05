@@ -49,7 +49,7 @@ terraform import prismatic_organization_user.admin <user_id>
 ### Optional
 
 - `name` (String) The name of the user.
-- `phone` (String) The phone number of the user. Note: The API normalizes phone numbers to E.164 format (e.g., `(201) 555-0123` becomes `+12015550123`).
+- `phone` (String) The phone number of the user in E.164 format (e.g., `+14155552671`). Must start with `+` followed by 7-15 digits.
 - `external_id` (String) An external ID for mapping to external systems. Defaults to `""`.
 - `avatar_url` (String) The URL of the user's avatar image.
 

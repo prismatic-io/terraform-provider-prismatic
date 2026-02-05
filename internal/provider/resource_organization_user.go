@@ -48,7 +48,7 @@ func resourceOrganizationUser() *schema.Resource {
 			"phone": {
 				Type:             schema.TypeString,
 				Optional:         true,
-				Computed:         true,
+				Default:          "",
 				ValidateDiagFunc: validateE164Phone,
 				Description:      "The phone number of the user in E.164 format (e.g., +14155552671). Must start with '+' followed by 7-15 digits.",
 			},
@@ -236,12 +236,12 @@ func resourceOrganizationUserUpdate(ctx context.Context, d *schema.ResourceData,
 		}
 
 		type UpdateUserInput struct {
-			Id         graphql.ID     `json:"id"`
-			Name       graphql.String `json:"name,omitempty"`
-			Role       graphql.ID     `json:"role,omitempty"`
-			Phone      graphql.String `json:"phone,omitempty"`
-			ExternalId graphql.String `json:"externalId,omitempty"`
-			AvatarUrl  graphql.String `json:"avatarUrl,omitempty"`
+			Id         graphql.ID      `json:"id"`
+			Name       graphql.String  `json:"name,omitempty"`
+			Role       graphql.ID      `json:"role,omitempty"`
+			Phone      *graphql.String `json:"phone"`
+			ExternalId *graphql.String `json:"externalId"`
+			AvatarUrl  graphql.String  `json:"avatarUrl,omitempty"`
 		}
 
 		input := UpdateUserInput{
@@ -255,10 +255,12 @@ func resourceOrganizationUserUpdate(ctx context.Context, d *schema.ResourceData,
 			input.Role = graphql.ID(d.Get("role").(string))
 		}
 		if d.HasChange("phone") {
-			input.Phone = graphql.String(d.Get("phone").(string))
+			phone := graphql.String(d.Get("phone").(string))
+			input.Phone = &phone
 		}
 		if d.HasChange("external_id") {
-			input.ExternalId = graphql.String(d.Get("external_id").(string))
+			externalId := graphql.String(d.Get("external_id").(string))
+			input.ExternalId = &externalId
 		}
 		if d.HasChange("avatar_url") {
 			input.AvatarUrl = graphql.String(d.Get("avatar_url").(string))

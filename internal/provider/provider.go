@@ -37,6 +37,12 @@ func New(version string) func() *schema.Provider {
 					DefaultFunc: schema.EnvDefaultFunc("PRISMATIC_REFRESH_TOKEN", nil),
 					Description: "A [refresh token to use for headless authentication](https://prismatic.io/docs/cli/bash-scripting/#headless-prism-usage-for-cicd-pipelines) to the Prismatic API.",
 				},
+				"tenant_id": {
+					Type:        schema.TypeString,
+					Optional:    true,
+					DefaultFunc: schema.EnvDefaultFunc("PRISMATIC_TENANT_ID", ""),
+					Description: "The [tenant ID to authenticate against](https://prismatic.io/docs/cli/bash-scripting/#headless-prism-usage-for-cicd-pipelines) when a refresh token grants access to multiple tenants. If omitted, it is left out of the token exchange.",
+				},
 			},
 			ResourcesMap: map[string]*schema.Resource{
 				"prismatic_component":                resourceComponent(),
@@ -45,6 +51,7 @@ func New(version string) func() *schema.Provider {
 				"prismatic_organization_user":        resourceOrganizationUser(),
 			},
 			DataSourcesMap: map[string]*schema.Resource{
+				"prismatic_authenticated_user":       dataSourceAuthenticatedUser(),
 				"prismatic_component_bundle":         dataSourceComponentBundle(),
 				"prismatic_components":               dataSourceComponents(),
 				"prismatic_integrations":             dataSourceIntegrations(),
@@ -61,7 +68,8 @@ func New(version string) func() *schema.Provider {
 }
 
 type RefreshTokenRequest struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string  `json:"refresh_token"`
+	TenantId     *string `json:"tenant_id,omitempty"`
 }
 
 func configure(version string, p *schema.Provider) func(context.Context, *schema.ResourceData) (any, diag.Diagnostics) {
@@ -69,6 +77,11 @@ func configure(version string, p *schema.Provider) func(context.Context, *schema
 		baseUrl := d.Get("url").(string)
 		token := d.Get("token").(string)
 		refreshToken := d.Get("refresh_token").(string)
+
+		var tenantId *string
+		if v := d.Get("tenant_id").(string); v != "" {
+			tenantId = &v
+		}
 
 		var diags diag.Diagnostics
 
@@ -97,7 +110,7 @@ func configure(version string, p *schema.Provider) func(context.Context, *schema
 		}
 
 		if refreshToken != "" {
-			accessToken, err := refreshAccessToken(u, RefreshTokenRequest{RefreshToken: refreshToken})
+			accessToken, err := refreshAccessToken(u, RefreshTokenRequest{RefreshToken: refreshToken, TenantId: tenantId})
 			if err != nil {
 				return nil, diag.FromErr(err)
 			}

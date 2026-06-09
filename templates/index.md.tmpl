@@ -26,6 +26,10 @@ better alternative.
 
 You can provide your credentials using the `PRISMATIC_URL` and `PRISMATIC_REFRESH_TOKEN` environment variables.
 
+If your refresh token grants access to multiple tenants, set the `PRISMATIC_TENANT_ID` environment variable (or the
+`tenant_id` provider attribute) to select which tenant to authenticate against. When omitted, it is left out of the
+token exchange.
+
 {{ tffile "examples/provider/provider_with_env_vars.tf" }}
 
 ### Example Usage

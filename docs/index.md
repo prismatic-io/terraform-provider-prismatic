@@ -18,6 +18,7 @@ Use the navigation to the left to read about the available resources and data so
 provider "prismatic" {
   url           = "<domain>"
   refresh_token = "<token>"
+  tenant_id     = "<tenant_id>"
 }
 ```
 
@@ -31,12 +32,17 @@ better alternative.
 ### Optional
 
 - `refresh_token` (String) A [refresh token to use for headless authentication](https://prismatic.io/docs/cli/bash-scripting/#headless-prism-usage-for-cicd-pipelines) to the Prismatic API.
+- `tenant_id` (String) The [tenant ID to authenticate against](https://prismatic.io/docs/cli/bash-scripting/#headless-prism-usage-for-cicd-pipelines) when a refresh token grants access to multiple tenants. If omitted, it is left out of the token exchange.
 - `token` (String, Deprecated) An [access token obtained with Prism CLI](https://prismatic.io/docs/cli/prism/#metoken) of Prismatic API calls.
 - `url` (String) URL of the Prismatic stack to communicate with. Defaults to the value of the `PRISMATIC_URL` environment variable.
 
 ## Environment Variables
 
 You can provide your credentials using the `PRISMATIC_URL` and `PRISMATIC_REFRESH_TOKEN` environment variables.
+
+If your refresh token grants access to multiple tenants, set the `PRISMATIC_TENANT_ID` environment variable (or the
+`tenant_id` provider attribute) to select which tenant to authenticate against. When omitted, it is left out of the
+token exchange.
 
 ```terraform
 provider "prismatic" {}

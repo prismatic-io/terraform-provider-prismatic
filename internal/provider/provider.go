@@ -27,14 +27,14 @@ func New(version string) func() *schema.Provider {
 				"token": {
 					Type:        schema.TypeString,
 					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("PRISMATIC_TOKEN", ""),
+					DefaultFunc: schema.EnvDefaultFunc("PRISMATIC_TOKEN", nil),
 					Description: "An [access token obtained with Prism CLI](https://prismatic.io/docs/cli/prism/#metoken) of Prismatic API calls.",
 					Deprecated:  "Access token use has been deprecated in favor of using refresh tokens. Please migrate provider configuration to use the new refresh_token attribute instead.",
 				},
 				"refresh_token": {
 					Type:        schema.TypeString,
 					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("PRISMATIC_REFRESH_TOKEN", ""),
+					DefaultFunc: schema.EnvDefaultFunc("PRISMATIC_REFRESH_TOKEN", nil),
 					Description: "A [refresh token to use for headless authentication](https://prismatic.io/docs/cli/bash-scripting/#headless-prism-usage-for-cicd-pipelines) to the Prismatic API.",
 				},
 			},

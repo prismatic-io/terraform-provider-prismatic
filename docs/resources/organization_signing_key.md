@@ -24,5 +24,3 @@ Import a public key into the Organization's Signing Keys
 - `id` (String) The ID of the signing key
 - `imported` (Boolean) Indicates if signing key was imported or generated
 - `issued_at` (String) Timestamp of when the signing key was issued
-
-

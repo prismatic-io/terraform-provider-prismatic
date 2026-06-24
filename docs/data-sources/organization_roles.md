@@ -29,5 +29,3 @@ Read-Only:
 - `id` (String)
 - `level` (Number)
 - `name` (String)
-
-

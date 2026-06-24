@@ -29,5 +29,3 @@ Read-Only:
 - `component_id` (String)
 - `component_key` (String)
 - `component_label` (String)
-
-

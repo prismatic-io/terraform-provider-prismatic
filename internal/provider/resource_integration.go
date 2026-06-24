@@ -2,12 +2,12 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/prismatic-io/terraform-provider-prismatic/internal/util"
 	"github.com/shurcooL/graphql"
 	"gopkg.in/yaml.v3"
-	"reflect"
 	"strings"
 )
 
@@ -137,7 +137,7 @@ func resourceIntegrationUpdate(ctx context.Context, d *schema.ResourceData, m in
 		}
 		type ImportIntegrationInput struct {
 			Id         graphql.ID     `json:"integrationId"`
-			Definition graphql.String `json:"definition"'`
+			Definition graphql.String `json:"definition"`
 		}
 		importVariables := map[string]interface{}{
 			"input": ImportIntegrationInput{
@@ -195,14 +195,82 @@ func resourceIntegrationDelete(ctx context.Context, d *schema.ResourceData, m in
 	return diags
 }
 
-// Suppress diff output for integration definitions if they're logically the same. We don't
-// care if ordering is different only that they're representing the same definition.
+// suppressDiffIntegrationDefinition suppresses spurious diffs between the YAML
+// definition in config and the heavily-normalized form the API returns on read
+// (it resolves component versions, injects defaults, and drops empties). The
+// config definition is treated as equivalent when it is a semantic subset of the
+// canonical definition. See definitionsEquivalent.
 func suppressDiffIntegrationDefinition(k, old, new string, d *schema.ResourceData) bool {
-	var oldData map[string]interface{}
-	var newData map[string]interface{}
+	// old = normalized definition stored in state; new = definition from config.
+	return definitionsEquivalent(new, old)
+}
 
-	_ = yaml.Unmarshal([]byte(old), &oldData)
-	_ = yaml.Unmarshal([]byte(new), &newData)
+// definitionsEquivalent reports whether the submitted definition is a semantic
+// subset of the server's canonical (normalized) definition.
+func definitionsEquivalent(submitted, canonical string) bool {
+	var w, g interface{}
+	if yaml.Unmarshal([]byte(submitted), &w) != nil || yaml.Unmarshal([]byte(canonical), &g) != nil {
+		return false
+	}
+	return yamlSubset(w, g)
+}
 
-	return reflect.DeepEqual(oldData, newData)
+// yamlSubset reports whether want is contained in got: every map key in want must
+// exist in got with a subset value (keys present only in got — server-injected
+// defaults — are ignored); lists compare element-wise; scalars must be equal.
+// Two carve-outs model the API's normalization: a "version" of "LATEST" matches
+// any resolved version, and an empty want value matches an absent got key.
+func yamlSubset(want, got interface{}) bool {
+	switch w := want.(type) {
+	case map[string]interface{}:
+		g, ok := got.(map[string]interface{})
+		if !ok {
+			return false
+		}
+		for k, wv := range w {
+			gv, present := g[k]
+			if !present {
+				if yamlEmpty(wv) {
+					continue
+				}
+				return false
+			}
+			if k == "version" && fmt.Sprint(wv) == "LATEST" {
+				continue
+			}
+			if !yamlSubset(wv, gv) {
+				return false
+			}
+		}
+		return true
+	case []interface{}:
+		g, ok := got.([]interface{})
+		if !ok || len(w) != len(g) {
+			return false
+		}
+		for i := range w {
+			if !yamlSubset(w[i], g[i]) {
+				return false
+			}
+		}
+		return true
+	default:
+		return fmt.Sprint(want) == fmt.Sprint(got)
+	}
+}
+
+// yamlEmpty reports whether v is nil, an empty string, an empty map, or an empty slice.
+func yamlEmpty(v interface{}) bool {
+	switch x := v.(type) {
+	case nil:
+		return true
+	case string:
+		return x == ""
+	case map[string]interface{}:
+		return len(x) == 0
+	case []interface{}:
+		return len(x) == 0
+	default:
+		return false
+	}
 }

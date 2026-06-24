@@ -1,45 +1,79 @@
-# This GitHub action can publish assets for release when a tag is created.
-# Currently its setup to run on any tag that matches the pattern "v*" (ie. v0.1.0).
-#
-# This uses an action (hashicorp/ghaction-import-gpg) that assumes you set your
-# private key in the `GPG_PRIVATE_KEY` secret and passphrase in the `GPG_PASSPHRASE`
-# secret. If you would rather own your own GPG handling, please fork this action
-# or use an alternative one for key handling.
-#
-# You will need to pass the `--batch` flag to `gpg` in your signing step
-# in `goreleaser` to indicate this is being used in a non-interactive mode.
-#
 name: release
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
   contents: write
+
 jobs:
-  goreleaser:
+  tag:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6.0.3
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up tools via mise
+        uses: jdx/mise-action@v4.1.0
+
+      - name: Compute and push tag
+        id: bump
+        run: |
+          latest=$(svu current 2>/dev/null || echo "v0.0.0")
+          new=$(svu "${{ inputs.bump }}")
+          echo "Current: $latest"
+          echo "New:     $new"
+          if [ "$latest" = "$new" ]; then
+            echo "svu produced no version change ($new) — nothing to release." >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$new" -m "Release $new"
+          git push origin "$new"
+          echo "tag=$new" >> "$GITHUB_OUTPUT"
+
+  goreleaser:
+    needs: tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
-      - name: Unshallow
-        run: git fetch --prune --unshallow
-      - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/checkout@v6.0.3
         with:
-          go-version-file: "go.mod"
-          cache: true
+          ref: ${{ needs.tag.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up tools via mise
+        uses: jdx/mise-action@v4.1.0
+
       - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@v5
+        uses: crazy-max/ghaction-import-gpg@v7.0.0
         id: import_gpg
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v3
-        with:
-          version: "~> v1.14"
-          args: release --rm-dist
+        run: goreleaser release --clean
         env:
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
           # GitHub sets this automatically

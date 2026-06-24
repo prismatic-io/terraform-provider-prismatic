@@ -32,5 +32,3 @@ Manage Organization Users in Prismatic.
 - `created_at` (String) The timestamp when the user was created.
 - `id` (String) The unique identifier of the user.
 - `updated_at` (String) The timestamp when the user was last updated.
-
-

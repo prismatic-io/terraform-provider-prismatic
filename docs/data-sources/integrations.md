@@ -28,5 +28,3 @@ Read-Only:
 - `integration_definition` (String)
 - `integration_id` (String)
 - `integration_name` (String)
-
-

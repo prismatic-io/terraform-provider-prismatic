@@ -1,0 +1,110 @@
+[tools]
+go = "1.26.4"
+node = "24"
+terraform = "1.15.6"
+"github-cli" = "2.95.0"
+golangci-lint = "2.12.2"
+goreleaser = "2.16.0"
+svu = "3.4.0"
+"go:github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs" = "0.25.0"
+
+[tasks.build]
+description = "Compile the provider"
+run = "go build -v ./..."
+
+[tasks.install]
+description = "Build and install the provider into GOBIN"
+run = "go install ."
+
+[tasks.init]
+description = "Download and verify modules"
+run = ["go mod download", "go mod verify"]
+
+[tasks.fmt]
+description = "Tidy modules and gofmt sources"
+run = ["go mod tidy", "gofmt -l -w -s ."]
+
+[tasks.check]
+description = "Fail if any Go source is not gofmt-clean"
+run = 'test -z "$(gofmt -l -s .)"'
+
+[tasks.lint]
+description = "Run golangci-lint"
+run = "golangci-lint run"
+
+[tasks.test]
+description = "Run tests (acceptance tests self-skip without TF_ACC)"
+run = "go test ./... -timeout 120m"
+
+[tasks.testacc]
+description = "Run acceptance tests against a live Prismatic API"
+env = { TF_ACC = "1" }
+run = "go test ./... -v -timeout 120m"
+
+[tasks."testacc:prism"]
+description = "Run acceptance tests, sourcing URL/token/tenant from prism (FORCE=1 skips the confirmation prompt)"
+run = '''
+command -v prism >/dev/null 2>&1 || { echo "prism CLI not found on PATH — install it and run 'prism login'."; exit 1; }
+
+me="$(prism me)" || { echo "Could not read your prism profile — run 'prism login' and try again."; exit 1; }
+echo "$me"
+echo
+if [ "${FORCE:-}" = "1" ]; then
+  echo "FORCE=1 — skipping confirmation."
+else
+  printf "Run acceptance tests against this stack/tenant/user? This creates and destroys real resources. [y/N] "
+  read -r ack
+  case "$ack" in
+    y|Y|yes|YES) ;;
+    *) echo "Aborted."; exit 1 ;;
+  esac
+fi
+
+refresh_token="$(prism me:token --type refresh)"
+if [ -z "$refresh_token" ]; then
+  echo "Could not read a refresh token from prism — run 'prism login' and try again."
+  exit 1
+fi
+
+url="$(printf '%s\n' "$me" | sed -n 's/^Endpoint URL: //p')"
+export PRISMATIC_URL="${url:-${PRISMATIC_URL:-https://app.prismatic.io}}"
+export PRISMATIC_REFRESH_TOKEN="$refresh_token"
+tenant="$(printf '%s\n' "$me" | sed -n 's/^Tenant ID: //p')"
+[ -n "$tenant" ] && export PRISMATIC_TENANT_ID="$tenant"
+
+mise run testacc
+'''
+
+[tasks.docs]
+description = "Format examples and regenerate registry docs via tfplugindocs"
+run = "go generate ./..."
+
+[tasks.ci]
+description = "Run everything CI runs (build, test, docs + drift check)"
+depends = ["build", "test", "docs"]
+run = '''
+git diff --exit-code --compact-summary -- docs/ examples/ || {
+  echo "Generated docs/examples are out of date — run 'mise run docs' and commit the result."
+  exit 1
+}
+'''
+
+[tasks.release]
+description = "Trigger a release (usage: mise run release -- patch|minor|major) — CI tags and runs GoReleaser"
+usage = 'arg "<bump>" help="patch, minor, or major"'
+run = '''
+set -eu
+
+bump="$usage_bump"
+case "$bump" in
+    major|minor|patch) ;;
+    *)
+        echo "bump must be one of: patch, minor, major (got: $bump)" >&2
+        exit 1
+        ;;
+esac
+
+gh workflow run release.yml -f bump="$bump"
+echo "Release workflow triggered with bump=$bump"
+echo "  https://github.com/prismatic-io/terraform-provider-prismatic/actions/workflows/release.yml"
+'''

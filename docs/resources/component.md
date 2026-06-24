@@ -27,5 +27,3 @@ Publish a Component to Prismatic. Use the 'Component Bundle' data source to gene
 - `id` (String) The ID of the Component
 - `key` (String) The key of the Component
 - `label` (String) The label of the Component
-
-

@@ -24,5 +24,3 @@ Generates a component bundle suitable for publishing
 
 - `id` (String) The ID of this resource.
 - `signature` (String) Signature of the bundle for detecting redundant publishes
-
-

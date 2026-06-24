@@ -16,8 +16,8 @@ func TestAccResourceComponent_basic(t *testing.T) {
 	expectedDescription := "Component description"
 	initial := `
 data "prismatic_component_bundle" "bundle" {
-    bundle_directory = "test-fixtures/component/code"
-    bundle_path = "test-fixtures/component/bundle.zip"
+    bundle_directory = "../../test/data/component/code"
+    bundle_path = "../../test/data/component/bundle.zip"
 }
 
 resource "prismatic_component" "component" {
@@ -45,7 +45,7 @@ resource "prismatic_component" "component" {
 }
 
 func TestReadComponentBundle(t *testing.T) {
-	result, err := readComponentBundle("test-fixtures/component/code/")
+	result, err := readComponentBundle("../../test/data/component/code/")
 	if err != nil {
 		t.Fatalf("Failed to read component bundle: %s", err)
 	}

@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # Roll all non-security version bumps into a single weekly PR. Security
+  # updates are not affected by version-update groups and continue to open
+  # individually so CVEs stay visible.
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 14
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 14
+    groups:
+      all-actions:
+        patterns:
+          - "*"

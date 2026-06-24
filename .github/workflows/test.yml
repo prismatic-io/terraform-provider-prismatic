@@ -1,6 +1,3 @@
-# This GitHub action runs your tests for each commit push and/or PR. Optionally
-# you can turn it on using a cron schedule for regular testing.
-#
 name: Tests
 on:
   pull_request:
@@ -15,44 +12,17 @@ on:
   # change.
   # schedule:
   #   - cron: '0 13 * * *'
+permissions:
+  contents: read
 jobs:
-  # ensure the code builds...
-  build:
-    name: Build
+  ci:
+    name: CI
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v3
-
-      - name: Set up Go
-        uses: actions/setup-go@v3
-        with:
-          go-version-file: "go.mod"
-          cache: true
-        id: go
-
-      - name: Get dependencies
-        run: |
-          go mod download
-
-      - name: Build
-        run: |
-          go build -v .
-
-  generate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version-file: "go.mod"
-          cache: true
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-      - run: go generate ./...
-      - name: git diff
-        run: |
-          git diff --compact-summary --exit-code || \
-            (echo; echo "Unexpected difference in directories after code generation. Run 'go generate ./...' command and commit."; exit 1)
+        uses: actions/checkout@v6.0.3
+      - name: Set up tools via mise
+        uses: jdx/mise-action@v4.1.0
+      - name: Run CI
+        run: mise run ci

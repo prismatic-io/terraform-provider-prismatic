@@ -24,5 +24,3 @@ Data source to retrieve an Organization's signing key
 - `imported` (Boolean) Indicates if the signing key was imported or generated
 - `issued_at` (String) The timestamp the signing key was issued at
 - `public_key` (String) The public key of the signing key
-
-

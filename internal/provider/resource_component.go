@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/prismatic-io/terraform-provider-prismatic/internal/util"
 	"github.com/shurcooL/graphql"
 	"os/exec"
 	"path"
 	"strings"
+	"time"
 )
 
 func resourceComponent() *schema.Resource {
@@ -73,9 +75,35 @@ func resourceComponentCreate(ctx context.Context, d *schema.ResourceData, m inte
 
 	d.SetId(componentId)
 
+	// Publishing is processed asynchronously, so the Component is not queryable the
+	// instant the mutation returns. Poll until it is available before reading it.
+	if err := waitForComponent(ctx, client, componentId); err != nil {
+		return diag.FromErr(err)
+	}
+
 	diags = append(diags, resourceComponentRead(ctx, d, m)...)
 
 	return diags
+}
+
+// waitForComponent polls until the Component with the given id is queryable,
+// tolerating the brief "not found" window after a publish.
+func waitForComponent(ctx context.Context, client *graphql.Client, id string) error {
+	return retry.RetryContext(ctx, 2*time.Minute, func() *retry.RetryError {
+		var query struct {
+			Component struct {
+				Id graphql.ID
+			} `graphql:"component(id: $id)"`
+		}
+		variables := map[string]interface{}{"id": graphql.ID(id)}
+		if err := client.Query(context.Background(), &query, variables); err != nil {
+			if strings.Contains(err.Error(), "Record not found") {
+				return retry.RetryableError(fmt.Errorf("component %q not yet available after publish", id))
+			}
+			return retry.NonRetryableError(err)
+		}
+		return nil
+	})
 }
 
 func resourceComponentRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {

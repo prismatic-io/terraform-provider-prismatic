@@ -22,5 +22,3 @@ Data source to retrieve information about the currently authenticated user and t
 - `id` (String) The unique identifier of the authenticated user.
 - `org_id` (String) The unique identifier of the organization the authenticated user belongs to.
 - `org_name` (String) The name of the organization the authenticated user belongs to.
-
-

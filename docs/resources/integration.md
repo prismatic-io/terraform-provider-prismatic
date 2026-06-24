@@ -24,5 +24,3 @@ Import Integrations into Prismatic using YAML definitions.
 - `description` (String) The description of the Integration
 - `id` (String) The ID of the Integration
 - `name` (String) The name of the Integration
-
-

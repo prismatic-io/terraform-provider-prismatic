@@ -39,5 +39,3 @@ Read-Only:
 - `role_id` (String)
 - `role_name` (String)
 - `updated_at` (String)
-
-

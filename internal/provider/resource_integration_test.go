@@ -18,25 +18,41 @@ const (
 	expectedDescription = "Acceptance Test Integration"
 
 	baseDefinition = `
-description: Acceptance Test Integration
-isSynchronous: false
+definitionVersion: 7
 name: Acceptance Test
-requiredConfigVars: {}
-steps: []
-trigger:
-  description: ''
-  name: Integration Trigger
-  schedule: null`
-	updateDefinition = `
 description: Acceptance Test Integration
-isSynchronous: false
+requiredConfigVars: []
+flows:
+  - name: Flow 1
+    isSynchronous: false
+    steps:
+      - name: Integration Trigger
+        isTrigger: true
+        action:
+          component:
+            key: webhook-triggers
+            version: LATEST
+            isPublic: true
+          key: webhook
+        inputs: {}`
+	updateDefinition = `
+definitionVersion: 7
 name: Acceptance Test Updated
-requiredConfigVars: {}
-steps: []
-trigger:
-  description: ''
-  name: Integration Trigger
-  schedule: null`
+description: Acceptance Test Integration
+requiredConfigVars: []
+flows:
+  - name: Flow 1
+    isSynchronous: false
+    steps:
+      - name: Integration Trigger
+        isTrigger: true
+        action:
+          component:
+            key: webhook-triggers
+            version: LATEST
+            isPublic: true
+          key: webhook
+        inputs: {}`
 )
 
 func resourceWithDefinition(definition string) string {
@@ -119,7 +135,7 @@ func TestSuppressDiffIntegrationDefinition_same(t *testing.T) {
 	first := `description: Acceptance Test Integration
 isSynchronous: false
 name: Acceptance Test
-requiredConfigVars: {}
+requiredConfigVars: []
 steps: []
 trigger:
   description: ""
@@ -132,7 +148,7 @@ trigger:
   name: Integration Trigger
   schedule: !!null null
 name: Acceptance Test
-requiredConfigVars: {}
+requiredConfigVars: []
 steps: []`
 	result := suppressDiffIntegrationDefinition("foo", first, second, nil)
 	if !result {

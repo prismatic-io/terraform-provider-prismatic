@@ -17,15 +17,15 @@ Data source to list Prismatic components
 
 ### Read-Only
 
-- `components` (List of Object) (see [below for nested schema](#nestedatt--components))
-- `id` (String) The ID of this resource.
+- `components` (Attributes List) (see [below for nested schema](#nestedatt--components))
+- `id` (String) Identifier for this data source.
 
 <a id="nestedatt--components"></a>
 ### Nested Schema for `components`
 
 Read-Only:
 
-- `component_description` (String)
-- `component_id` (String)
-- `component_key` (String)
-- `component_label` (String)
+- `component_description` (String) The description of the Component
+- `component_id` (String) The ID of the Component
+- `component_key` (String) The key of the Component
+- `component_label` (String) The label of the Component

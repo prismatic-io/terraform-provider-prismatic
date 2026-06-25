@@ -4,11 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-	"github.com/shurcooL/graphql"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 const (
@@ -28,9 +27,10 @@ Y/35T0CGASyTAgMBAAE=
 func resourceWithPubkey(definition string) string {
 	return fmt.Sprintf(`
 resource "prismatic_organization_signing_key" "key" {
-  public_key = <<EOF
+  public_key = trimspace(<<EOF
 %s
 EOF
+)
 }`, definition)
 }
 
@@ -39,9 +39,9 @@ func TestAccResourceOrganizationSigningKey_basic(t *testing.T) {
 	resourceName := "prismatic_organization_signing_key.key"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckOrganizationSigningKeyResourceDestroy,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckOrganizationSigningKeyResourceDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: resourceWithPubkey(expectedPubKey),
@@ -50,12 +50,20 @@ func TestAccResourceOrganizationSigningKey_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "public_key", expectedPubKey),
 				),
 			},
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
 		},
 	})
 }
 
 func testAccCheckOrganizationSigningKeyResourceDestroy(s *terraform.State) error {
-	client := testAccProvider.Meta().(*graphql.Client)
+	client, err := testAccGraphQLClient()
+	if err != nil {
+		return err
+	}
 
 	var query struct {
 		Organization struct {

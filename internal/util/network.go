@@ -11,6 +11,7 @@ func UploadFile(localPath string, uploadUrl string, contentType string) error {
 	if err != nil {
 		return err
 	}
+	defer func() { _ = file.Close() }()
 
 	stat, err := file.Stat()
 	if err != nil {
@@ -25,10 +26,10 @@ func UploadFile(localPath string, uploadUrl string, contentType string) error {
 	req.ContentLength = stat.Size()
 
 	resp, err := http.DefaultClient.Do(req)
-	defer resp.Body.Close()
 	if err != nil {
 		return err
 	}
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode > 400 {
 		return fmt.Errorf("upload attempt returned an error: %d", resp.StatusCode)

@@ -31,9 +31,9 @@ better alternative.
 
 ### Optional
 
-- `refresh_token` (String) A [refresh token to use for headless authentication](https://prismatic.io/docs/cli/bash-scripting/#headless-prism-usage-for-cicd-pipelines) to the Prismatic API.
+- `refresh_token` (String, Sensitive) A [refresh token to use for headless authentication](https://prismatic.io/docs/cli/bash-scripting/#headless-prism-usage-for-cicd-pipelines) to the Prismatic API.
 - `tenant_id` (String) The [tenant ID to authenticate against](https://prismatic.io/docs/cli/bash-scripting/#headless-prism-usage-for-cicd-pipelines) when a refresh token grants access to multiple tenants. If omitted, it is left out of the token exchange.
-- `token` (String, Deprecated) An [access token obtained with Prism CLI](https://prismatic.io/docs/cli/prism/#metoken) of Prismatic API calls.
+- `token` (String, Sensitive, Deprecated) An [access token obtained with Prism CLI](https://prismatic.io/docs/cli/prism/#metoken) of Prismatic API calls.
 - `url` (String) URL of the Prismatic stack to communicate with. Defaults to the value of the `PRISMATIC_URL` environment variable.
 
 ## Environment Variables

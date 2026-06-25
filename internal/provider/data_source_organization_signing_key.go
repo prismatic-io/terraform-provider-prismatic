@@ -2,35 +2,50 @@ package provider
 
 import (
 	"context"
-	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/shurcooL/graphql"
-	"log"
 )
 
-func dataSourceOrganizationSigningKey() *schema.Resource {
-	return &schema.Resource{
+var (
+	_ datasource.DataSource              = (*organizationSigningKeyDataSource)(nil)
+	_ datasource.DataSourceWithConfigure = (*organizationSigningKeyDataSource)(nil)
+)
+
+type organizationSigningKeyDataSource struct {
+	client *graphql.Client
+}
+
+type organizationSigningKeyModel struct {
+	Id        types.String `tfsdk:"id"`
+	Imported  types.Bool   `tfsdk:"imported"`
+	IssuedAt  types.String `tfsdk:"issued_at"`
+	PublicKey types.String `tfsdk:"public_key"`
+}
+
+func (d *organizationSigningKeyDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_organization_signing_key"
+}
+
+func (d *organizationSigningKeyDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
 		Description: "Data source to retrieve an Organization's signing key",
-		ReadContext: dataSourceOrganizationSigningKeyRead,
-		Schema: map[string]*schema.Schema{
-			"id": {
-				Type:        schema.TypeString,
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
 				Required:    true,
 				Description: "The ID of the signing key to fetch.",
 			},
-			"imported": {
-				Type:        schema.TypeBool,
+			"imported": schema.BoolAttribute{
 				Computed:    true,
 				Description: "Indicates if the signing key was imported or generated",
 			},
-			"issued_at": {
-				Type:        schema.TypeString,
+			"issued_at": schema.StringAttribute{
 				Computed:    true,
 				Description: "The timestamp the signing key was issued at",
 			},
-			"public_key": {
-				Type:        schema.TypeString,
+			"public_key": schema.StringAttribute{
 				Computed:    true,
 				Description: "The public key of the signing key",
 			},
@@ -38,10 +53,16 @@ func dataSourceOrganizationSigningKey() *schema.Resource {
 	}
 }
 
-func dataSourceOrganizationSigningKeyRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*graphql.Client)
+func (d *organizationSigningKeyDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	d.client = clientFromProviderData(req.ProviderData, &resp.Diagnostics)
+}
 
-	var diags diag.Diagnostics
+func (d *organizationSigningKeyDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var config organizationSigningKeyModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	var query struct {
 		Organization struct {
@@ -56,37 +77,35 @@ func dataSourceOrganizationSigningKeyRead(ctx context.Context, d *schema.Resourc
 		}
 	}
 
-	targetID := fmt.Sprintf("%v", d.Get("id"))
+	targetID := config.Id.ValueString()
 
-	if err := client.Query(context.Background(), &query, nil); err != nil {
-		return diag.FromErr(err)
+	if err := d.client.Query(ctx, &query, nil); err != nil {
+		resp.Diagnostics.AddError("Unable to read organization signing key", err.Error())
+		return
 	}
 
-	targetSigningKey := make(map[string]interface{})
-
+	var found bool
+	var state organizationSigningKeyModel
 	for _, signingKey := range query.Organization.SigningKeys.Nodes {
 		if signingKey.Id == targetID {
-			targetSigningKey["id"] = signingKey.Id
-			targetSigningKey["issued_at"] = signingKey.IssuedAt
-			targetSigningKey["public_key"] = signingKey.PublicKey
-			targetSigningKey["imported"] = signingKey.Imported
+			state = organizationSigningKeyModel{
+				Id:        types.StringValue(signingKey.Id),
+				Imported:  types.BoolValue(signingKey.Imported),
+				IssuedAt:  types.StringValue(signingKey.IssuedAt),
+				PublicKey: types.StringValue(signingKey.PublicKey),
+			}
+			found = true
 			break
 		}
 	}
 
-	if !d.IsNewResource() && targetSigningKey["id"] == nil {
-		log.Printf("organization signing key (%s) not found!", targetID)
-		d.SetId("")
-		return nil
+	if !found {
+		resp.Diagnostics.AddError(
+			"Organization signing key not found",
+			"No organization signing key found with ID: "+targetID,
+		)
+		return
 	}
 
-	for key, value := range targetSigningKey {
-		if err := d.Set(key, value); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	d.SetId(fmt.Sprintf("%v", targetSigningKey["id"]))
-
-	return diags
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

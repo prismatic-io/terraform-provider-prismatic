@@ -3,74 +3,139 @@ package provider
 import (
 	"context"
 	"regexp"
-	"strings"
 
-	"github.com/hashicorp/go-cty/cty"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/prismatic-io/terraform-provider-prismatic/internal/util"
 	"github.com/shurcooL/graphql"
 )
 
-func resourceOrganizationUser() *schema.Resource {
-	return &schema.Resource{
-		Description:   "Manage Organization Users in Prismatic.",
-		CreateContext: resourceOrganizationUserCreate,
-		ReadContext:   resourceOrganizationUserRead,
-		UpdateContext: resourceOrganizationUserUpdate,
-		DeleteContext: resourceOrganizationUserDelete,
-		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
-		},
-		Schema: map[string]*schema.Schema{
-			"id": {
-				Type:        schema.TypeString,
+var (
+	_ resource.Resource                = (*organizationUserResource)(nil)
+	_ resource.ResourceWithConfigure   = (*organizationUserResource)(nil)
+	_ resource.ResourceWithImportState = (*organizationUserResource)(nil)
+)
+
+type organizationUserResource struct {
+	client *graphql.Client
+}
+
+type organizationUserResourceModel struct {
+	Id         types.String `tfsdk:"id"`
+	Email      types.String `tfsdk:"email"`
+	Name       types.String `tfsdk:"name"`
+	Role       types.String `tfsdk:"role"`
+	Phone      types.String `tfsdk:"phone"`
+	ExternalId types.String `tfsdk:"external_id"`
+	AvatarUrl  types.String `tfsdk:"avatar_url"`
+	CreatedAt  types.String `tfsdk:"created_at"`
+	UpdatedAt  types.String `tfsdk:"updated_at"`
+}
+
+// e164PhoneValidator validates that a phone number is in E.164 format.
+type e164PhoneValidator struct{}
+
+func (v e164PhoneValidator) Description(ctx context.Context) string {
+	return "Phone number must be in E.164 format (e.g., +14155552671). It must start with '+' followed by 7-15 digits, and the first digit after '+' cannot be 0."
+}
+
+func (v e164PhoneValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v e164PhoneValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	value := req.ConfigValue.ValueString()
+
+	// Allow empty string since the field is optional
+	if value == "" {
+		return
+	}
+
+	// E.164 format: + followed by 7-15 digits, first digit cannot be 0
+	e164Regex := regexp.MustCompile(`^\+[1-9]\d{6,14}$`)
+	if !e164Regex.MatchString(value) {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Invalid phone number format",
+			"Phone number must be in E.164 format (e.g., +14155552671). It must start with '+' followed by 7-15 digits, and the first digit after '+' cannot be 0.",
+		)
+	}
+}
+
+func (r *organizationUserResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_organization_user"
+}
+
+func (r *organizationUserResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Manage Organization Users in Prismatic.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
 				Computed:    true,
 				Description: "The unique identifier of the user.",
 			},
-			"email": {
-				Type:        schema.TypeString,
+			"email": schema.StringAttribute{
 				Required:    true,
-				ForceNew:    true,
 				Description: "The email address of the user. Changing this will recreate the user.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"name": {
-				Type:        schema.TypeString,
+			"name": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
 				Description: "The name of the user.",
+				// Hold prior value when omitted so an unrelated update doesn't wipe it.
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
-			"role": {
-				Type:        schema.TypeString,
+			"role": schema.StringAttribute{
 				Required:    true,
 				Description: "The ID of the role to assign to the user.",
 			},
-			"phone": {
-				Type:             schema.TypeString,
-				Optional:         true,
-				Default:          "",
-				ValidateDiagFunc: validateE164Phone,
-				Description:      "The phone number of the user in E.164 format (e.g., +14155552671). Must start with '+' followed by 7-15 digits.",
+			"phone": schema.StringAttribute{
+				Optional: true,
+				// Computed only to carry the Default (the framework requires it). The ""
+				// default makes an omitted phone plan as a known "" rather than unknown,
+				// so an unrelated update cannot wipe a previously set value.
+				Computed:    true,
+				Default:     stringdefault.StaticString(""),
+				Description: "The phone number of the user in E.164 format (e.g., +14155552671). Must start with '+' followed by 7-15 digits.",
+				Validators: []validator.String{
+					e164PhoneValidator{},
+				},
 			},
-			"external_id": {
-				Type:        schema.TypeString,
+			"external_id": schema.StringAttribute{
 				Optional:    true,
-				Default:     "",
+				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 				Description: "An external ID for mapping to external systems.",
 			},
-			"avatar_url": {
-				Type:        schema.TypeString,
+			"avatar_url": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
 				Description: "The URL of the user's avatar image.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
-			"created_at": {
-				Type:        schema.TypeString,
+			"created_at": schema.StringAttribute{
 				Computed:    true,
 				Description: "The timestamp when the user was created.",
 			},
-			"updated_at": {
-				Type:        schema.TypeString,
+			"updated_at": schema.StringAttribute{
 				Computed:    true,
 				Description: "The timestamp when the user was last updated.",
 			},
@@ -78,33 +143,16 @@ func resourceOrganizationUser() *schema.Resource {
 	}
 }
 
-// validateE164Phone validates that a phone number is in E.164 format.
-func validateE164Phone(v interface{}, path cty.Path) diag.Diagnostics {
-	var diags diag.Diagnostics
-	value := v.(string)
-
-	// Allow empty string since the field is optional
-	if value == "" {
-		return diags
-	}
-
-	// E.164 format: + followed by 7-15 digits, first digit cannot be 0
-	e164Regex := regexp.MustCompile(`^\+[1-9]\d{6,14}$`)
-	if !e164Regex.MatchString(value) {
-		diags = append(diags, diag.Diagnostic{
-			Severity: diag.Error,
-			Summary:  "Invalid phone number format",
-			Detail:   "Phone number must be in E.164 format (e.g., +14155552671). It must start with '+' followed by 7-15 digits, and the first digit after '+' cannot be 0.",
-		})
-	}
-
-	return diags
+func (r *organizationUserResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	r.client = clientFromProviderData(req.ProviderData, &resp.Diagnostics)
 }
 
-func resourceOrganizationUserCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*graphql.Client)
-
-	var diags diag.Diagnostics
+func (r *organizationUserResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan organizationUserResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	var mutation struct {
 		CreateOrganizationUser struct {
@@ -115,54 +163,71 @@ func resourceOrganizationUserCreate(ctx context.Context, d *schema.ResourceData,
 		} `graphql:"createOrganizationUser(input: $input)"`
 	}
 
-	type CreateOrganizationUserInput struct {
-		Email      graphql.String `json:"email"`
-		Name       graphql.String `json:"name,omitempty"`
-		Role       graphql.ID     `json:"role"`
-		Phone      graphql.String `json:"phone,omitempty"`
-		ExternalId graphql.String `json:"externalId,omitempty"`
-	}
-
 	input := CreateOrganizationUserInput{
-		Email: graphql.String(d.Get("email").(string)),
-		Role:  graphql.ID(d.Get("role").(string)),
+		Email: graphql.String(plan.Email.ValueString()),
+		Role:  graphql.ID(plan.Role.ValueString()),
 	}
 
-	if v, ok := d.GetOk("name"); ok {
-		input.Name = graphql.String(v.(string))
+	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
+		input.Name = graphql.String(plan.Name.ValueString())
 	}
-	if v, ok := d.GetOk("phone"); ok {
-		input.Phone = graphql.String(v.(string))
+	if !plan.Phone.IsNull() && !plan.Phone.IsUnknown() {
+		input.Phone = graphql.String(plan.Phone.ValueString())
 	}
-	if v, ok := d.GetOk("external_id"); ok {
-		input.ExternalId = graphql.String(v.(string))
+	if !plan.ExternalId.IsNull() && !plan.ExternalId.IsUnknown() {
+		input.ExternalId = graphql.String(plan.ExternalId.ValueString())
 	}
 
 	variables := map[string]interface{}{
 		"input": input,
 	}
 
-	if err := client.Mutate(context.Background(), &mutation, variables); err != nil {
-		return diag.FromErr(err)
+	if err := r.client.Mutate(ctx, &mutation, variables); err != nil {
+		resp.Diagnostics.AddError("Unable to create organization user", err.Error())
+		return
 	}
 
-	if len(mutation.CreateOrganizationUser.Errors) > 0 {
-		return util.DiagFromGqlError(mutation.CreateOrganizationUser.Errors)
+	resp.Diagnostics.Append(gqlErrorDiagnostics(mutation.CreateOrganizationUser.Errors)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	d.SetId(mutation.CreateOrganizationUser.User.Id.(string))
+	id := mutation.CreateOrganizationUser.User.Id.(string)
 
-	// Read back the created resource to populate computed fields
-	diags = append(diags, resourceOrganizationUserRead(ctx, d, m)...)
+	state := r.read(ctx, id, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if state == nil {
+		resp.Diagnostics.AddError("Unable to read organization user", "User was created but could not be found.")
+		return
+	}
 
-	return diags
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-func resourceOrganizationUserRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*graphql.Client)
+func (r *organizationUserResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state organizationUserResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	var diags diag.Diagnostics
+	newState := r.read(ctx, state.Id.ValueString(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if newState == nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 
+	resp.Diagnostics.Append(resp.State.Set(ctx, newState)...)
+}
+
+// read fetches an organization user by id and maps it to a model, returning nil if
+// the user no longer exists.
+func (r *organizationUserResource) read(ctx context.Context, id string, diags *diag.Diagnostics) *organizationUserResourceModel {
 	var query struct {
 		User struct {
 			Id         graphql.ID
@@ -180,115 +245,139 @@ func resourceOrganizationUserRead(ctx context.Context, d *schema.ResourceData, m
 	}
 
 	variables := map[string]interface{}{
-		"id": graphql.ID(d.Id()),
+		"id": graphql.ID(id),
 	}
 
-	if err := client.Query(context.Background(), &query, variables); err != nil {
-		// If the user is not found, remove from state
-		if strings.Contains(err.Error(), "Record not found") {
-			d.SetId("")
-			return diags
+	if err := r.client.Query(ctx, &query, variables); err != nil {
+		if isRecordNotFound(err) {
+			return nil
 		}
-		return diag.FromErr(err)
+		diags.AddError("Unable to read organization user", err.Error())
+		return nil
 	}
 
-	if err := d.Set("email", string(query.User.Email)); err != nil {
-		return diag.FromErr(err)
+	return &organizationUserResourceModel{
+		Id:         types.StringValue(query.User.Id.(string)),
+		Email:      types.StringValue(string(query.User.Email)),
+		Name:       types.StringValue(string(query.User.Name)),
+		Role:       types.StringValue(query.User.Role.Id.(string)),
+		Phone:      types.StringValue(string(query.User.Phone)),
+		ExternalId: types.StringValue(string(query.User.ExternalId)),
+		AvatarUrl:  types.StringValue(string(query.User.AvatarUrl)),
+		CreatedAt:  types.StringValue(string(query.User.CreatedAt)),
+		UpdatedAt:  types.StringValue(string(query.User.UpdatedAt)),
 	}
-	if err := d.Set("name", string(query.User.Name)); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("role", query.User.Role.Id.(string)); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("phone", string(query.User.Phone)); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("external_id", string(query.User.ExternalId)); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("avatar_url", string(query.User.AvatarUrl)); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("created_at", string(query.User.CreatedAt)); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("updated_at", string(query.User.UpdatedAt)); err != nil {
-		return diag.FromErr(err)
-	}
-
-	return diags
 }
 
-func resourceOrganizationUserUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*graphql.Client)
+type CreateOrganizationUserInput struct {
+	Email      graphql.String `json:"email"`
+	Name       graphql.String `json:"name,omitempty"`
+	Role       graphql.ID     `json:"role"`
+	Phone      graphql.String `json:"phone,omitempty"`
+	ExternalId graphql.String `json:"externalId,omitempty"`
+}
 
-	var diags diag.Diagnostics
+// UpdateUserInput is the updateUser mutation input. Phone/ExternalId are
+// non-omitempty pointers: a "" pointer clears them, nil leaves them untouched.
+type UpdateUserInput struct {
+	Id         graphql.ID      `json:"id"`
+	Name       graphql.String  `json:"name,omitempty"`
+	Role       graphql.ID      `json:"role,omitempty"`
+	Phone      *graphql.String `json:"phone"`
+	ExternalId *graphql.String `json:"externalId"`
+	AvatarUrl  graphql.String  `json:"avatarUrl,omitempty"`
+}
 
-	if d.HasChanges("name", "role", "phone", "external_id", "avatar_url") {
-		var mutation struct {
-			UpdateUser struct {
-				User struct {
-					Id graphql.ID
-				}
-				Errors util.GqlErrors
-			} `graphql:"updateUser(input: $input)"`
-		}
+type DeleteUserInput struct {
+	Id graphql.ID `json:"id"`
+}
 
-		type UpdateUserInput struct {
-			Id         graphql.ID      `json:"id"`
-			Name       graphql.String  `json:"name,omitempty"`
-			Role       graphql.ID      `json:"role,omitempty"`
-			Phone      *graphql.String `json:"phone"`
-			ExternalId *graphql.String `json:"externalId"`
-			AvatarUrl  graphql.String  `json:"avatarUrl,omitempty"`
-		}
+// buildUpdateUserInput includes only changed fields. The IsUnknown() guards stop
+// an unknown (omitted Computed) plan value from serializing as a wiping "".
+func buildUpdateUserInput(plan, state organizationUserResourceModel) UpdateUserInput {
+	input := UpdateUserInput{
+		Id: graphql.ID(state.Id.ValueString()),
+	}
 
-		input := UpdateUserInput{
-			Id: graphql.ID(d.Id()),
-		}
-
-		if d.HasChange("name") {
-			input.Name = graphql.String(d.Get("name").(string))
-		}
-		if d.HasChange("role") {
-			input.Role = graphql.ID(d.Get("role").(string))
-		}
-		if d.HasChange("phone") {
-			phone := graphql.String(d.Get("phone").(string))
+	if !plan.Name.Equal(state.Name) && !plan.Name.IsUnknown() {
+		input.Name = graphql.String(plan.Name.ValueString())
+	}
+	if !plan.Role.Equal(state.Role) && !plan.Role.IsUnknown() {
+		input.Role = graphql.ID(plan.Role.ValueString())
+	}
+	if !plan.Phone.Equal(state.Phone) && !plan.Phone.IsUnknown() {
+		if plan.Phone.IsNull() {
+			input.Phone = nil
+		} else {
+			phone := graphql.String(plan.Phone.ValueString())
 			input.Phone = &phone
 		}
-		if d.HasChange("external_id") {
-			externalId := graphql.String(d.Get("external_id").(string))
+	}
+	if !plan.ExternalId.Equal(state.ExternalId) && !plan.ExternalId.IsUnknown() {
+		if plan.ExternalId.IsNull() {
+			input.ExternalId = nil
+		} else {
+			externalId := graphql.String(plan.ExternalId.ValueString())
 			input.ExternalId = &externalId
 		}
-		if d.HasChange("avatar_url") {
-			input.AvatarUrl = graphql.String(d.Get("avatar_url").(string))
-		}
-
-		variables := map[string]interface{}{
-			"input": input,
-		}
-
-		if err := client.Mutate(context.Background(), &mutation, variables); err != nil {
-			return diag.FromErr(err)
-		}
-
-		if len(mutation.UpdateUser.Errors) > 0 {
-			return util.DiagFromGqlError(mutation.UpdateUser.Errors)
-		}
+	}
+	if !plan.AvatarUrl.Equal(state.AvatarUrl) && !plan.AvatarUrl.IsUnknown() {
+		input.AvatarUrl = graphql.String(plan.AvatarUrl.ValueString())
 	}
 
-	// Read back the updated resource
-	diags = append(diags, resourceOrganizationUserRead(ctx, d, m)...)
-
-	return diags
+	return input
 }
 
-func resourceOrganizationUserDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*graphql.Client)
+func (r *organizationUserResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan organizationUserResourceModel
+	var state organizationUserResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	var diags diag.Diagnostics
+	var mutation struct {
+		UpdateUser struct {
+			User struct {
+				Id graphql.ID
+			}
+			Errors util.GqlErrors
+		} `graphql:"updateUser(input: $input)"`
+	}
+
+	variables := map[string]interface{}{
+		"input": buildUpdateUserInput(plan, state),
+	}
+
+	if err := r.client.Mutate(ctx, &mutation, variables); err != nil {
+		resp.Diagnostics.AddError("Unable to update organization user", err.Error())
+		return
+	}
+
+	resp.Diagnostics.Append(gqlErrorDiagnostics(mutation.UpdateUser.Errors)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	newState := r.read(ctx, state.Id.ValueString(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if newState == nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, newState)...)
+}
+
+func (r *organizationUserResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var state organizationUserResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	var mutation struct {
 		DeleteUser struct {
@@ -299,25 +388,20 @@ func resourceOrganizationUserDelete(ctx context.Context, d *schema.ResourceData,
 		} `graphql:"deleteUser(input: $input)"`
 	}
 
-	type DeleteUserInput struct {
-		Id graphql.ID `json:"id"`
-	}
-
 	variables := map[string]interface{}{
 		"input": DeleteUserInput{
-			Id: graphql.ID(d.Id()),
+			Id: graphql.ID(state.Id.ValueString()),
 		},
 	}
 
-	if err := client.Mutate(context.Background(), &mutation, variables); err != nil {
-		return diag.FromErr(err)
+	if err := r.client.Mutate(ctx, &mutation, variables); err != nil {
+		resp.Diagnostics.AddError("Unable to delete organization user", err.Error())
+		return
 	}
 
-	if len(mutation.DeleteUser.Errors) > 0 {
-		return util.DiagFromGqlError(mutation.DeleteUser.Errors)
-	}
+	resp.Diagnostics.Append(gqlErrorDiagnostics(mutation.DeleteUser.Errors)...)
+}
 
-	d.SetId("")
-
-	return diags
+func (r *organizationUserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

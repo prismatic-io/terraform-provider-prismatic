@@ -12,10 +12,10 @@ func CompressDirectory(srcDirectory string, destPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	w := zip.NewWriter(file)
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	err = filepath.Walk(srcDirectory, createRecursiveWalker(w, srcDirectory))
 	if err != nil {
@@ -38,7 +38,7 @@ func createRecursiveWalker(w *zip.Writer, rootPath string) func(path string, inf
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		relPath, err := filepath.Rel(rootPath, path)
 		if err != nil {

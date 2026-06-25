@@ -32,6 +32,10 @@ run = 'test -z "$(gofmt -l -s .)"'
 description = "Run golangci-lint"
 run = "golangci-lint run"
 
+[tasks.vet]
+description = "Run go vet"
+run = "go vet ./..."
+
 [tasks.test]
 description = "Run tests (acceptance tests self-skip without TF_ACC)"
 run = "go test ./... -timeout 120m"
@@ -80,11 +84,12 @@ description = "Format examples and regenerate registry docs via tfplugindocs"
 run = "go generate ./..."
 
 [tasks.ci]
-description = "Run everything CI runs (build, test, docs + drift check)"
-depends = ["build", "test", "docs"]
+description = "Run everything CI runs (build, vet, gofmt, lint, test, docs + drift checks)"
+depends = ["build", "vet", "check", "lint", "test", "docs"]
 run = '''
-git diff --exit-code --compact-summary -- docs/ examples/ || {
-  echo "Generated docs/examples are out of date — run 'mise run docs' and commit the result."
+go mod tidy
+git diff --exit-code --compact-summary -- docs/ examples/ go.mod go.sum || {
+  echo "Out of date — run 'mise run docs' and 'go mod tidy', then commit the result."
   exit 1
 }
 '''

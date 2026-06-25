@@ -17,15 +17,15 @@ Data source to list Prismatic Organization Roles.
 
 ### Read-Only
 
-- `id` (String) The ID of this resource.
-- `roles` (List of Object) List of organization roles available in Prismatic. (see [below for nested schema](#nestedatt--roles))
+- `id` (String) Identifier for this data source.
+- `roles` (Attributes List) List of organization roles available in Prismatic. (see [below for nested schema](#nestedatt--roles))
 
 <a id="nestedatt--roles"></a>
 ### Nested Schema for `roles`
 
 Read-Only:
 
-- `description` (String)
-- `id` (String)
-- `level` (Number)
-- `name` (String)
+- `description` (String) The description of the role.
+- `id` (String) The unique identifier of the role.
+- `level` (Number) The permission level of the role. Higher values indicate more permissions.
+- `name` (String) The name of the role.

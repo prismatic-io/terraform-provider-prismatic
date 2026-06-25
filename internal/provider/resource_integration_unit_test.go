@@ -55,7 +55,7 @@ const integrationCanonicalV7 = `"category": ""
     "name": "Integration Trigger"
 "name": "Acceptance Test"`
 
-func TestSuppressDiffIntegrationDefinition(t *testing.T) {
+func TestDefinitionsEquivalentRealPair(t *testing.T) {
 	cases := []struct {
 		name       string
 		old        string // normalized definition in state
@@ -90,7 +90,7 @@ func TestSuppressDiffIntegrationDefinition(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := suppressDiffIntegrationDefinition("definition", tc.old, tc.new, nil); got != tc.suppressed {
+			if got := definitionsEquivalent(tc.new, tc.old); got != tc.suppressed {
 				t.Errorf("suppress = %v, want %v", got, tc.suppressed)
 			}
 		})
@@ -140,5 +140,31 @@ func TestDefinitionsEquivalent(t *testing.T) {
 				t.Errorf("definitionsEquivalent = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestDefinitionsEquivalentReordered confirms that two definitions that differ only
+// in key ordering and YAML scalar style are still treated as equivalent.
+func TestDefinitionsEquivalentReordered(t *testing.T) {
+	first := `description: Acceptance Test Integration
+isSynchronous: false
+name: Acceptance Test
+requiredConfigVars: []
+steps: []
+trigger:
+  description: ""
+  name: 'Integration Trigger'
+  schedule: null`
+	second := `"description": Acceptance Test Integration
+isSynchronous: false
+trigger:
+  description: ''
+  name: Integration Trigger
+  schedule: !!null null
+name: Acceptance Test
+requiredConfigVars: []
+steps: []`
+	if !definitionsEquivalent(first, second) {
+		t.Fatalf("Did not suppress diff for logically identical definitions")
 	}
 }

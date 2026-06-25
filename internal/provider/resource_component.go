@@ -5,57 +5,71 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/prismatic-io/terraform-provider-prismatic/internal/util"
-	"github.com/shurcooL/graphql"
 	"os/exec"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/prismatic-io/terraform-provider-prismatic/internal/util"
+	"github.com/shurcooL/graphql"
 )
 
-func resourceComponent() *schema.Resource {
-	return &schema.Resource{
-		Description:   "Publish a Component to Prismatic. Use the 'Component Bundle' data source to generate the bundle",
-		CreateContext: resourceComponentCreate,
-		ReadContext:   resourceComponentRead,
-		UpdateContext: resourceComponentUpdate,
-		DeleteContext: resourceComponentDelete,
-		Schema: map[string]*schema.Schema{
-			"id": {
-				Type:        schema.TypeString,
+var (
+	_ resource.Resource              = (*componentResource)(nil)
+	_ resource.ResourceWithConfigure = (*componentResource)(nil)
+)
+
+type componentResource struct {
+	client *graphql.Client
+}
+
+type componentResourceModel struct {
+	Id              types.String `tfsdk:"id"`
+	Key             types.String `tfsdk:"key"`
+	Label           types.String `tfsdk:"label"`
+	Description     types.String `tfsdk:"description"`
+	BundleDirectory types.String `tfsdk:"bundle_directory"`
+	BundlePath      types.String `tfsdk:"bundle_path"`
+	Signature       types.String `tfsdk:"signature"`
+}
+
+func (r *componentResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_component"
+}
+
+func (r *componentResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Publish a Component to Prismatic. Use the 'Component Bundle' data source to generate the bundle",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
 				Computed:    true,
 				Description: "The ID of the Component",
 			},
-			"key": {
-				Type:        schema.TypeString,
+			"key": schema.StringAttribute{
 				Computed:    true,
 				Description: "The key of the Component",
 			},
-			"label": {
-				Type:        schema.TypeString,
+			"label": schema.StringAttribute{
 				Computed:    true,
 				Description: "The label of the Component",
 			},
-			"description": {
-				Type:        schema.TypeString,
+			"description": schema.StringAttribute{
 				Computed:    true,
 				Description: "The description of the Component",
 			},
-			"bundle_directory": {
-				Type:        schema.TypeString,
+			"bundle_directory": schema.StringAttribute{
 				Required:    true,
 				Description: "Bundled directory. Reference the results of the 'Component Bundle' data source.",
 			},
-			"bundle_path": {
-				Type:        schema.TypeString,
+			"bundle_path": schema.StringAttribute{
 				Required:    true,
 				Description: "Bundle path. Reference the results of the 'Component Bundle' data source.",
 			},
-			"signature": {
-				Type:        schema.TypeString,
+			"signature": schema.StringAttribute{
 				Required:    true,
 				Description: "Bundle signature. Reference the results of the 'Component Bundle' data source.",
 			},
@@ -63,54 +77,107 @@ func resourceComponent() *schema.Resource {
 	}
 }
 
-func resourceComponentCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*graphql.Client)
+func (r *componentResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	r.client = clientFromProviderData(req.ProviderData, &resp.Diagnostics)
+}
 
-	var diags diag.Diagnostics
-
-	componentId, err := publishComponent(client, d)
-	if err != nil {
-		return diag.FromErr(err)
+func (r *componentResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan componentResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	d.SetId(componentId)
+	componentId, err := publishComponent(ctx, r.client, plan.BundleDirectory.ValueString(), plan.BundlePath.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to publish component", err.Error())
+		return
+	}
 
 	// Publishing is processed asynchronously, so the Component is not queryable the
 	// instant the mutation returns. Poll until it is available before reading it.
-	if err := waitForComponent(ctx, client, componentId); err != nil {
-		return diag.FromErr(err)
+	if err := waitForComponent(ctx, r.client, componentId); err != nil {
+		resp.Diagnostics.AddError("Unable to publish component", err.Error())
+		return
 	}
 
-	diags = append(diags, resourceComponentRead(ctx, d, m)...)
+	state := r.read(ctx, componentId, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if state == nil {
+		resp.Diagnostics.AddError("Unable to publish component", "Component was published but could not be found.")
+		return
+	}
+	state.copyBundleInputsFrom(plan)
 
-	return diags
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-// waitForComponent polls until the Component with the given id is queryable,
-// tolerating the brief "not found" window after a publish.
-func waitForComponent(ctx context.Context, client *graphql.Client, id string) error {
-	return retry.RetryContext(ctx, 2*time.Minute, func() *retry.RetryError {
-		var query struct {
-			Component struct {
-				Id graphql.ID
-			} `graphql:"component(id: $id)"`
-		}
-		variables := map[string]interface{}{"id": graphql.ID(id)}
-		if err := client.Query(context.Background(), &query, variables); err != nil {
-			if strings.Contains(err.Error(), "Record not found") {
-				return retry.RetryableError(fmt.Errorf("component %q not yet available after publish", id))
-			}
-			return retry.NonRetryableError(err)
-		}
-		return nil
-	})
+func (r *componentResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state componentResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	updated := r.read(ctx, state.Id.ValueString(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if updated == nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	updated.copyBundleInputsFrom(state)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, updated)...)
 }
 
-func resourceComponentRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*graphql.Client)
+func (r *componentResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan componentResourceModel
+	var state componentResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	var diags diag.Diagnostics
+	// publishComponent upserts by key. Re-read by the prior id so the resource id
+	// stays immutable across updates rather than adopting the id the publish returns.
+	if _, err := publishComponent(ctx, r.client, plan.BundleDirectory.ValueString(), plan.BundlePath.ValueString()); err != nil {
+		resp.Diagnostics.AddError("Unable to publish component", err.Error())
+		return
+	}
 
+	if err := waitForComponent(ctx, r.client, state.Id.ValueString()); err != nil {
+		resp.Diagnostics.AddError("Unable to publish component", err.Error())
+		return
+	}
+
+	updated := r.read(ctx, state.Id.ValueString(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if updated == nil {
+		resp.Diagnostics.AddError("Unable to publish component", "Component was published but could not be found.")
+		return
+	}
+	updated.copyBundleInputsFrom(plan)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, updated)...)
+}
+
+func (r *componentResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	// Only clear state since it seems unlikely that the consequences of a delete are
+	// desired, particularly in resource "tainted" situations.
+	resp.State.RemoveResource(ctx)
+}
+
+// read queries the Component by id and maps its server-owned fields into a model,
+// returning nil if the Component no longer exists. The bundle inputs are not part of
+// the API response, so the caller restores them with copyBundleInputsFrom.
+func (r *componentResource) read(ctx context.Context, id string, diags *diag.Diagnostics) *componentResourceModel {
 	var query struct {
 		Component struct {
 			Id          graphql.ID
@@ -120,63 +187,71 @@ func resourceComponentRead(ctx context.Context, d *schema.ResourceData, m interf
 		} `graphql:"component(id: $id)"`
 	}
 	variables := map[string]interface{}{
-		"id": graphql.ID(d.Id()),
+		"id": graphql.ID(id),
 	}
-	if err := client.Query(context.Background(), &query, variables); err != nil {
-		if strings.Contains(err.Error(), "Record not found") {
-			d.SetId("")
-			return diags
+	if err := r.client.Query(ctx, &query, variables); err != nil {
+		if isRecordNotFound(err) {
+			return nil
 		}
-		return diag.FromErr(err)
+		diags.AddError("Unable to read component", err.Error())
+		return nil
 	}
 
-	if err := d.Set("key", query.Component.Key); err != nil {
-		return diag.FromErr(err)
+	return &componentResourceModel{
+		Id:          types.StringValue(query.Component.Id.(string)),
+		Key:         types.StringValue(string(query.Component.Key)),
+		Label:       types.StringValue(string(query.Component.Label)),
+		Description: types.StringValue(string(query.Component.Description)),
 	}
-	if err := d.Set("label", query.Component.Label); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("description", query.Component.Description); err != nil {
-		return diag.FromErr(err)
-	}
-
-	return diags
 }
 
-func resourceComponentUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*graphql.Client)
+// copyBundleInputsFrom carries the configuration-only bundle inputs (which the API
+// does not return) over from the plan or prior state into a freshly read model.
+func (m *componentResourceModel) copyBundleInputsFrom(src componentResourceModel) {
+	m.BundleDirectory = src.BundleDirectory
+	m.BundlePath = src.BundlePath
+	m.Signature = src.Signature
+}
 
-	var diags diag.Diagnostics
-
-	_, err := publishComponent(client, d)
-	if err != nil {
-		return diag.FromErr(err)
+// waitForComponent polls until the Component with the given id is queryable,
+// tolerating the brief "not found" window after a publish.
+func waitForComponent(ctx context.Context, client *graphql.Client, id string) error {
+	deadline := time.Now().Add(2 * time.Minute)
+	for {
+		var query struct {
+			Component struct {
+				Id graphql.ID
+			} `graphql:"component(id: $id)"`
+		}
+		variables := map[string]interface{}{"id": graphql.ID(id)}
+		err := client.Query(ctx, &query, variables)
+		if err == nil {
+			return nil
+		}
+		if !isRecordNotFound(err) {
+			return err
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("component %q not yet available after publish", id)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
 	}
-
-	diags = append(diags, resourceComponentRead(ctx, d, m)...)
-
-	return diags
 }
 
-func resourceComponentDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	var diags diag.Diagnostics
-
-	// Only clear the Id since it seems unlikely that the consequences of a delete are
-	// desired, particularly in resource "tainted" situations.
-	d.SetId("")
-
-	return diags
-}
-
-// Process the component bundle to capture its data for submission.
-func readComponentBundle(path string) (*PublishComponentInput, error) {
+// readComponentBundle runs the bundle through node to capture its definition and
+// actions for submission to the publishComponent mutation.
+func readComponentBundle(bundlePath string) (*PublishComponentInput, error) {
 	nodePath, err := exec.LookPath("node")
 	if err != nil {
 		return nil, err
 	}
 
 	cmd := exec.Command(nodePath, "-")
-	cmd.Dir = path
+	cmd.Dir = bundlePath
 	cmd.Stdin = strings.NewReader("const bundle = require(\".\"); console.log(JSON.stringify(bundle.default));")
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
@@ -213,14 +288,11 @@ func readComponentBundle(path string) (*PublishComponentInput, error) {
 	return &input, nil
 }
 
-func publishComponent(client *graphql.Client, d *schema.ResourceData) (string, error) {
-	bundleDirectory := d.Get("bundle_directory").(string)
+func publishComponent(ctx context.Context, client *graphql.Client, bundleDirectory string, packagePath string) (string, error) {
 	bundle, err := readComponentBundle(bundleDirectory)
 	if err != nil {
 		return "", err
 	}
-
-	packagePath := d.Get("bundle_path").(string)
 
 	var mutation struct {
 		PublishComponent struct {
@@ -240,7 +312,7 @@ func publishComponent(client *graphql.Client, d *schema.ResourceData) (string, e
 		},
 	}
 
-	if err := client.Mutate(context.Background(), &mutation, variables); err != nil {
+	if err := client.Mutate(ctx, &mutation, variables); err != nil {
 		return "", err
 	}
 

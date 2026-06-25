@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-	"github.com/shurcooL/graphql"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/shurcooL/graphql"
 )
 
 const (
@@ -66,9 +67,9 @@ EOF
 
 func TestAccResourceIntegration_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIntegrationResourceDestroy,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckIntegrationResourceDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: resourceWithDefinition(baseDefinition),
@@ -79,15 +80,23 @@ func TestAccResourceIntegration_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "description", expectedDescription),
 				),
 			},
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+				// definition imports as the canonical form: semantically equal but not
+				// textually equal to the submitted value in state, so skip literal compare.
+				ImportStateVerifyIgnore: []string{"definition"},
+			},
 		},
 	})
 }
 
 func TestAccResourceIntegration_update(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIntegrationResourceDestroy,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckIntegrationResourceDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: resourceWithDefinition(baseDefinition),
@@ -108,8 +117,29 @@ func TestAccResourceIntegration_update(t *testing.T) {
 	})
 }
 
+func TestAccResourceIntegration_planStability(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckIntegrationResourceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: resourceWithDefinition(baseDefinition),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{
+						plancheck.ExpectEmptyPlan(),
+					},
+				},
+			},
+		},
+	})
+}
+
 func testAccCheckIntegrationResourceDestroy(s *terraform.State) error {
-	client := testAccProvider.Meta().(*graphql.Client)
+	client, err := testAccGraphQLClient()
+	if err != nil {
+		return err
+	}
 
 	var query struct {
 		Integrations struct {
@@ -128,30 +158,4 @@ func testAccCheckIntegrationResourceDestroy(s *terraform.State) error {
 	}
 
 	return nil
-}
-
-// FIXME: Generative test to ensure positive/negative behaviors?
-func TestSuppressDiffIntegrationDefinition_same(t *testing.T) {
-	first := `description: Acceptance Test Integration
-isSynchronous: false
-name: Acceptance Test
-requiredConfigVars: []
-steps: []
-trigger:
-  description: ""
-  name: 'Integration Trigger'
-  schedule: null`
-	second := `"description": Acceptance Test Integration
-isSynchronous: false
-trigger:
-  description: ''
-  name: Integration Trigger
-  schedule: !!null null
-name: Acceptance Test
-requiredConfigVars: []
-steps: []`
-	result := suppressDiffIntegrationDefinition("foo", first, second, nil)
-	if !result {
-		t.Fatalf("Did not suppress diff for logically identical definitions")
-	}
 }

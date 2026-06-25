@@ -12,7 +12,7 @@ func GetSha1Signature(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	hash := sha1.New()
 	if _, err := io.Copy(hash, file); err != nil {

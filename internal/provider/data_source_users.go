@@ -3,76 +3,100 @@ package provider
 import (
 	"context"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/shurcooL/graphql"
 )
 
-func dataSourceUsers() *schema.Resource {
-	return &schema.Resource{
+var (
+	_ datasource.DataSource              = (*usersDataSource)(nil)
+	_ datasource.DataSourceWithConfigure = (*usersDataSource)(nil)
+)
+
+type usersDataSource struct {
+	client *graphql.Client
+}
+
+type usersModel struct {
+	Id             types.String `tfsdk:"id"`
+	CustomerIsNull types.Bool   `tfsdk:"customer_is_null"`
+	Users          []userModel  `tfsdk:"users"`
+}
+
+type userModel struct {
+	Id         types.String `tfsdk:"id"`
+	Email      types.String `tfsdk:"email"`
+	Name       types.String `tfsdk:"name"`
+	RoleId     types.String `tfsdk:"role_id"`
+	RoleName   types.String `tfsdk:"role_name"`
+	Phone      types.String `tfsdk:"phone"`
+	ExternalId types.String `tfsdk:"external_id"`
+	AvatarUrl  types.String `tfsdk:"avatar_url"`
+	CreatedAt  types.String `tfsdk:"created_at"`
+	UpdatedAt  types.String `tfsdk:"updated_at"`
+}
+
+func (d *usersDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_users"
+}
+
+func (d *usersDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
 		Description: "Data source to list Prismatic Users.",
-		ReadContext: dataSourceUsersRead,
-		Schema: map[string]*schema.Schema{
-			"customer_is_null": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Default:     true,
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:    true,
+				Description: "Identifier for this data source.",
+			},
+			"customer_is_null": schema.BoolAttribute{
+				Optional: true,
+				// Computed so the default true written back on the omitted path is legal.
+				Computed:    true,
 				Description: "Filter for users where customer is NULL. When true (default), returns only Organization users. When false, returns Customer users.",
 			},
-			"users": {
-				Description: "List of users in Prismatic.",
-				Type:        schema.TypeList,
+			"users": schema.ListNestedAttribute{
 				Computed:    true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"id": {
-							Type:        schema.TypeString,
+				Description: "List of users in Prismatic.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"id": schema.StringAttribute{
 							Computed:    true,
 							Description: "The unique identifier of the user.",
 						},
-						"email": {
-							Type:        schema.TypeString,
+						"email": schema.StringAttribute{
 							Computed:    true,
 							Description: "The email address of the user.",
 						},
-						"name": {
-							Type:        schema.TypeString,
+						"name": schema.StringAttribute{
 							Computed:    true,
 							Description: "The name of the user.",
 						},
-						"role_id": {
-							Type:        schema.TypeString,
+						"role_id": schema.StringAttribute{
 							Computed:    true,
 							Description: "The ID of the role assigned to the user.",
 						},
-						"role_name": {
-							Type:        schema.TypeString,
+						"role_name": schema.StringAttribute{
 							Computed:    true,
 							Description: "The name of the role assigned to the user.",
 						},
-						"phone": {
-							Type:        schema.TypeString,
+						"phone": schema.StringAttribute{
 							Computed:    true,
 							Description: "The phone number of the user.",
 						},
-						"external_id": {
-							Type:        schema.TypeString,
+						"external_id": schema.StringAttribute{
 							Computed:    true,
 							Description: "The external ID for mapping to external systems.",
 						},
-						"avatar_url": {
-							Type:        schema.TypeString,
+						"avatar_url": schema.StringAttribute{
 							Computed:    true,
 							Description: "The URL of the user's avatar image.",
 						},
-						"created_at": {
-							Type:        schema.TypeString,
+						"created_at": schema.StringAttribute{
 							Computed:    true,
 							Description: "The timestamp when the user was created.",
 						},
-						"updated_at": {
-							Type:        schema.TypeString,
+						"updated_at": schema.StringAttribute{
 							Computed:    true,
 							Description: "The timestamp when the user was last updated.",
 						},
@@ -83,12 +107,21 @@ func dataSourceUsers() *schema.Resource {
 	}
 }
 
-func dataSourceUsersRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*graphql.Client)
+func (d *usersDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	d.client = clientFromProviderData(req.ProviderData, &resp.Diagnostics)
+}
 
-	var diags diag.Diagnostics
+func (d *usersDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var config usersModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	customerIsNull := d.Get("customer_is_null").(bool)
+	customerIsNull := true
+	if !config.CustomerIsNull.IsNull() && !config.CustomerIsNull.IsUnknown() {
+		customerIsNull = config.CustomerIsNull.ValueBool()
+	}
 
 	// users returns UserConnection! (with nodes)
 	var query struct {
@@ -114,32 +147,30 @@ func dataSourceUsersRead(ctx context.Context, d *schema.ResourceData, m interfac
 		"customerIsNull": graphql.Boolean(customerIsNull),
 	}
 
-	if err := client.Query(context.Background(), &query, variables); err != nil {
-		return diag.FromErr(err)
+	if err := d.client.Query(ctx, &query, variables); err != nil {
+		resp.Diagnostics.AddError("Unable to read users", err.Error())
+		return
 	}
 
-	count := len(query.Users.Nodes)
-	users := make([]interface{}, count)
-	for i, userNode := range query.Users.Nodes {
-		user := make(map[string]interface{})
-		user["id"] = userNode.Id.(string)
-		user["email"] = string(userNode.Email)
-		user["name"] = string(userNode.Name)
-		user["phone"] = string(userNode.Phone)
-		user["external_id"] = string(userNode.ExternalId)
-		user["avatar_url"] = string(userNode.AvatarUrl)
-		user["created_at"] = string(userNode.CreatedAt)
-		user["updated_at"] = string(userNode.UpdatedAt)
-		user["role_id"] = userNode.Role.Id.(string)
-		user["role_name"] = string(userNode.Role.Name)
-		users[i] = user
+	state := usersModel{
+		Id:             types.StringValue("users"),
+		CustomerIsNull: types.BoolValue(customerIsNull),
+		Users:          make([]userModel, 0, len(query.Users.Nodes)),
+	}
+	for _, userNode := range query.Users.Nodes {
+		state.Users = append(state.Users, userModel{
+			Id:         types.StringValue(userNode.Id.(string)),
+			Email:      types.StringValue(string(userNode.Email)),
+			Name:       types.StringValue(string(userNode.Name)),
+			RoleId:     types.StringValue(userNode.Role.Id.(string)),
+			RoleName:   types.StringValue(string(userNode.Role.Name)),
+			Phone:      types.StringValue(string(userNode.Phone)),
+			ExternalId: types.StringValue(string(userNode.ExternalId)),
+			AvatarUrl:  types.StringValue(string(userNode.AvatarUrl)),
+			CreatedAt:  types.StringValue(string(userNode.CreatedAt)),
+			UpdatedAt:  types.StringValue(string(userNode.UpdatedAt)),
+		})
 	}
 
-	if err := d.Set("users", users); err != nil {
-		return diag.FromErr(err)
-	}
-
-	d.SetId(resource.UniqueId())
-
-	return diags
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

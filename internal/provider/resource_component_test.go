@@ -1,12 +1,9 @@
 package provider
 
 import (
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"testing"
-)
 
-const (
-	expectedLabel = "Component label"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccResourceComponent_basic(t *testing.T) {
@@ -27,8 +24,8 @@ resource "prismatic_component" "component" {
 }`
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviders,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: initial,
@@ -42,14 +39,4 @@ resource "prismatic_component" "component" {
 			},
 		},
 	})
-}
-
-func TestReadComponentBundle(t *testing.T) {
-	result, err := readComponentBundle("../../test/data/component/code/")
-	if err != nil {
-		t.Fatalf("Failed to read component bundle: %s", err)
-	}
-	if result == nil {
-		t.Fatalf("Received nil result from bundle read")
-	}
 }

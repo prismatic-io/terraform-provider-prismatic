@@ -21,21 +21,21 @@ Data source to list Prismatic Users.
 
 ### Read-Only
 
-- `id` (String) The ID of this resource.
-- `users` (List of Object) List of users in Prismatic. (see [below for nested schema](#nestedatt--users))
+- `id` (String) Identifier for this data source.
+- `users` (Attributes List) List of users in Prismatic. (see [below for nested schema](#nestedatt--users))
 
 <a id="nestedatt--users"></a>
 ### Nested Schema for `users`
 
 Read-Only:
 
-- `avatar_url` (String)
-- `created_at` (String)
-- `email` (String)
-- `external_id` (String)
-- `id` (String)
-- `name` (String)
-- `phone` (String)
-- `role_id` (String)
-- `role_name` (String)
-- `updated_at` (String)
+- `avatar_url` (String) The URL of the user's avatar image.
+- `created_at` (String) The timestamp when the user was created.
+- `email` (String) The email address of the user.
+- `external_id` (String) The external ID for mapping to external systems.
+- `id` (String) The unique identifier of the user.
+- `name` (String) The name of the user.
+- `phone` (String) The phone number of the user.
+- `role_id` (String) The ID of the role assigned to the user.
+- `role_name` (String) The name of the role assigned to the user.
+- `updated_at` (String) The timestamp when the user was last updated.

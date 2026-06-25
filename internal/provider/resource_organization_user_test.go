@@ -7,8 +7,9 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/shurcooL/graphql"
 )
 
@@ -45,9 +46,9 @@ resource "prismatic_organization_user" "test" {
 
 func TestAccResourceOrganizationUser_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckOrganizationUserDestroy,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckOrganizationUserDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: organizationUserConfig(testUserEmail, testUserName, "local.admin_role.id", "", "EXT-TEST-001"),
@@ -73,9 +74,9 @@ func TestAccResourceOrganizationUser_basic(t *testing.T) {
 
 func TestAccResourceOrganizationUser_update(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckOrganizationUserDestroy,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckOrganizationUserDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: organizationUserConfig(testUserEmail, testUserName, "local.admin_role.id", "", "EXT-TEST-001"),
@@ -93,8 +94,41 @@ func TestAccResourceOrganizationUser_update(t *testing.T) {
 	})
 }
 
+func TestAccResourceOrganizationUser_phonePlanStability(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckOrganizationUserDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: organizationUserConfig(testUserEmail, testUserName, "local.admin_role.id", "", "EXT-TEST-001"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPostRefresh: []plancheck.PlanCheck{
+						plancheck.ExpectEmptyPlan(),
+					},
+				},
+			},
+			{
+				Config: organizationUserConfig(testUserEmail, testUserUpdatedName, "local.admin_role.id", "", "EXT-TEST-001"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(organizationUserResourceName, plancheck.ResourceActionUpdate),
+					},
+				},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(organizationUserResourceName, "name", testUserUpdatedName),
+					resource.TestCheckResourceAttr(organizationUserResourceName, "external_id", "EXT-TEST-001"),
+				),
+			},
+		},
+	})
+}
+
 func testAccCheckOrganizationUserDestroy(s *terraform.State) error {
-	client := testAccProvider.Meta().(*graphql.Client)
+	client, err := testAccGraphQLClient()
+	if err != nil {
+		return err
+	}
 
 	var query struct {
 		Users struct {
@@ -118,8 +152,8 @@ func testAccCheckOrganizationUserDestroy(s *terraform.State) error {
 
 func TestAccResourceOrganizationUser_invalidPhoneFormat(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviders,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      organizationUserConfig(testUserEmail, testUserName, "local.admin_role.id", "12345", ""),
@@ -131,34 +165,4 @@ func TestAccResourceOrganizationUser_invalidPhoneFormat(t *testing.T) {
 			},
 		},
 	})
-}
-
-func TestValidateE164Phone(t *testing.T) {
-	testCases := []struct {
-		name        string
-		phone       string
-		expectError bool
-	}{
-		{"valid US number", "+14155552671", false},
-		{"valid min length", "+1234567", false},
-		{"valid max length", "+123456789012345", false},
-		{"empty string", "", false},
-		{"missing plus", "14155552671", true},
-		{"starts with zero", "+0123456789", true},
-		{"too short", "+123456", true},
-		{"too long", "+1234567890123456", true},
-		{"only plus", "+", true},
-		{"letters included", "+1415abc2671", true},
-		{"spaces included", "+1 415 555 2671", true},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			diags := validateE164Phone(tc.phone, nil)
-			hasError := diags.HasError()
-			if hasError != tc.expectError {
-				t.Errorf("validateE164Phone(%q): expected error=%v, got error=%v", tc.phone, tc.expectError, hasError)
-			}
-		})
-	}
 }

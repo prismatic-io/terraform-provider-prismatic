@@ -2,39 +2,63 @@ package provider
 
 import (
 	"context"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/shurcooL/graphql"
 )
 
-func dataSourceComponents() *schema.Resource {
-	return &schema.Resource{
+var (
+	_ datasource.DataSource              = (*componentsDataSource)(nil)
+	_ datasource.DataSourceWithConfigure = (*componentsDataSource)(nil)
+)
+
+type componentsDataSource struct {
+	client *graphql.Client
+}
+
+type componentsModel struct {
+	Id         types.String     `tfsdk:"id"`
+	Components []componentModel `tfsdk:"components"`
+}
+
+type componentModel struct {
+	ComponentId          types.String `tfsdk:"component_id"`
+	ComponentKey         types.String `tfsdk:"component_key"`
+	ComponentLabel       types.String `tfsdk:"component_label"`
+	ComponentDescription types.String `tfsdk:"component_description"`
+}
+
+func (d *componentsDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_components"
+}
+
+func (d *componentsDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
 		Description: "Data source to list Prismatic components",
-		ReadContext: dataSourceComponentsRead,
-		Schema: map[string]*schema.Schema{
-			"components": {
-				Type:     schema.TypeList,
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:    true,
+				Description: "Identifier for this data source.",
+			},
+			"components": schema.ListNestedAttribute{
 				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"component_id": {
-							Type:        schema.TypeString,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"component_id": schema.StringAttribute{
 							Computed:    true,
 							Description: "The ID of the Component",
 						},
-						"component_key": {
-							Type:        schema.TypeString,
+						"component_key": schema.StringAttribute{
 							Computed:    true,
 							Description: "The key of the Component",
 						},
-						"component_label": {
-							Type:        schema.TypeString,
+						"component_label": schema.StringAttribute{
 							Computed:    true,
 							Description: "The label of the Component",
 						},
-						"component_description": {
-							Type:        schema.TypeString,
+						"component_description": schema.StringAttribute{
 							Computed:    true,
 							Description: "The description of the Component",
 						},
@@ -45,11 +69,11 @@ func dataSourceComponents() *schema.Resource {
 	}
 }
 
-func dataSourceComponentsRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*graphql.Client)
+func (d *componentsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	d.client = clientFromProviderData(req.ProviderData, &resp.Diagnostics)
+}
 
-	var diags diag.Diagnostics
-
+func (d *componentsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var query struct {
 		Components struct {
 			Nodes []struct {
@@ -61,26 +85,24 @@ func dataSourceComponentsRead(ctx context.Context, d *schema.ResourceData, m int
 		}
 	}
 
-	if err := client.Query(context.Background(), &query, nil); err != nil {
-		return diag.FromErr(err)
+	if err := d.client.Query(ctx, &query, nil); err != nil {
+		resp.Diagnostics.AddError("Unable to read components", err.Error())
+		return
 	}
 
-	count := len(query.Components.Nodes)
-	components := make([]interface{}, count, count)
-	for i, componentNode := range query.Components.Nodes {
-		component := make(map[string]interface{})
-		component["component_id"] = componentNode.Id
-		component["component_key"] = componentNode.Key
-		component["component_label"] = componentNode.Label
-		component["component_description"] = componentNode.Description
-		components[i] = component
+	state := componentsModel{
+		Id:         types.StringValue("components"),
+		Components: make([]componentModel, 0, len(query.Components.Nodes)),
 	}
 
-	if err := d.Set("components", components); err != nil {
-		return diag.FromErr(err)
+	for _, componentNode := range query.Components.Nodes {
+		state.Components = append(state.Components, componentModel{
+			ComponentId:          types.StringValue(componentNode.Id),
+			ComponentKey:         types.StringValue(componentNode.Key),
+			ComponentLabel:       types.StringValue(componentNode.Label),
+			ComponentDescription: types.StringValue(componentNode.Description),
+		})
 	}
 
-	d.SetId(resource.UniqueId())
-
-	return diags
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

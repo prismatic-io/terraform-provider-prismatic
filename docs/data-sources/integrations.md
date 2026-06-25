@@ -17,14 +17,14 @@ description: |-
 
 ### Read-Only
 
-- `id` (String) The ID of this resource.
-- `integrations` (List of Object) Data source to list Prismatic Integrations (see [below for nested schema](#nestedatt--integrations))
+- `id` (String) Identifier for this data source.
+- `integrations` (Attributes List) Data source to list Prismatic Integrations (see [below for nested schema](#nestedatt--integrations))
 
 <a id="nestedatt--integrations"></a>
 ### Nested Schema for `integrations`
 
 Read-Only:
 
-- `integration_definition` (String)
-- `integration_id` (String)
-- `integration_name` (String)
+- `integration_definition` (String) The YAML definition of the Integration
+- `integration_id` (String) The ID of the Integration
+- `integration_name` (String) The name of the Integration

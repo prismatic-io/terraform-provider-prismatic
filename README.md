@@ -4,13 +4,16 @@ Terraform Provider for the [Prismatic](https://prismatic.io/) platform.
 
 ## Installation
 
-### Terraform 0.13+
+### Requirements
 
-Terraform 0.13 and higher uses the [Terraform Registry](htps://registry.terraform.io/) to download and install
-providers. To install this provider, copy and paste the following into your Terraform configuration and run `terraform init`.
+This provider requires **Terraform 1.0 or later** and is built on the [Terraform Plugin Framework](https://developer.hashicorp.com/terraform/plugin/framework).
+
+Terraform uses the [Terraform Registry](https://registry.terraform.io/) to download and install providers. To install this provider, copy and paste the following into your Terraform configuration and run `terraform init`.
 
 ```tf
 terraform {
+	required_version = ">= 1.0"
+
 	required_providers {
 		prismatic = {
 			source = "prismatic-io/prismatic"

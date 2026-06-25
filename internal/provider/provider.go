@@ -1,158 +1,128 @@
 package provider
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/url"
+	"os"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/shurcooL/graphql"
-	"golang.org/x/oauth2"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/provider"
+	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-func New(version string) func() *schema.Provider {
-	return func() *schema.Provider {
-		p := &schema.Provider{
-			Schema: map[string]*schema.Schema{
-				"url": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("PRISMATIC_URL", "https://app.prismatic.io"),
-					Description: "URL of the Prismatic stack to communicate with. Defaults to the value of the `PRISMATIC_URL` environment variable.",
-				},
-				"token": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("PRISMATIC_TOKEN", nil),
-					Description: "An [access token obtained with Prism CLI](https://prismatic.io/docs/cli/prism/#metoken) of Prismatic API calls.",
-					Deprecated:  "Access token use has been deprecated in favor of using refresh tokens. Please migrate provider configuration to use the new refresh_token attribute instead.",
-				},
-				"refresh_token": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("PRISMATIC_REFRESH_TOKEN", nil),
-					Description: "A [refresh token to use for headless authentication](https://prismatic.io/docs/cli/bash-scripting/#headless-prism-usage-for-cicd-pipelines) to the Prismatic API.",
-				},
-				"tenant_id": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("PRISMATIC_TENANT_ID", ""),
-					Description: "The [tenant ID to authenticate against](https://prismatic.io/docs/cli/bash-scripting/#headless-prism-usage-for-cicd-pipelines) when a refresh token grants access to multiple tenants. If omitted, it is left out of the token exchange.",
-				},
-			},
-			ResourcesMap: map[string]*schema.Resource{
-				"prismatic_component":                resourceComponent(),
-				"prismatic_integration":              resourceIntegration(),
-				"prismatic_organization_signing_key": resourceOrganizationSigningKey(),
-				"prismatic_organization_user":        resourceOrganizationUser(),
-			},
-			DataSourcesMap: map[string]*schema.Resource{
-				"prismatic_authenticated_user":       dataSourceAuthenticatedUser(),
-				"prismatic_component_bundle":         dataSourceComponentBundle(),
-				"prismatic_components":               dataSourceComponents(),
-				"prismatic_integrations":             dataSourceIntegrations(),
-				"prismatic_organization_signing_key": dataSourceOrganizationSigningKey(),
-				"prismatic_organization_roles":       dataSourceOrganizationRoles(),
-				"prismatic_users":                    dataSourceUsers(),
-			},
-		}
+var _ provider.Provider = (*prismaticProvider)(nil)
 
-		p.ConfigureContextFunc = configure(version, p)
-
-		return p
+// New returns the Prismatic provider.
+func New(version string) func() provider.Provider {
+	return func() provider.Provider {
+		return &prismaticProvider{version: version}
 	}
 }
 
-type RefreshTokenRequest struct {
-	RefreshToken string  `json:"refresh_token"`
-	TenantId     *string `json:"tenant_id,omitempty"`
+type prismaticProvider struct {
+	version string
 }
 
-func configure(version string, p *schema.Provider) func(context.Context, *schema.ResourceData) (any, diag.Diagnostics) {
-	return func(ctx context.Context, d *schema.ResourceData) (any, diag.Diagnostics) {
-		baseUrl := d.Get("url").(string)
-		token := d.Get("token").(string)
-		refreshToken := d.Get("refresh_token").(string)
+type providerModel struct {
+	Url          types.String `tfsdk:"url"`
+	Token        types.String `tfsdk:"token"`
+	RefreshToken types.String `tfsdk:"refresh_token"`
+	TenantId     types.String `tfsdk:"tenant_id"`
+}
 
-		var tenantId *string
-		if v := d.Get("tenant_id").(string); v != "" {
-			tenantId = &v
-		}
+func (p *prismaticProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
+	resp.TypeName = "prismatic"
+	resp.Version = p.version
+}
 
-		var diags diag.Diagnostics
-
-		if baseUrl == "" {
-			diags = append(diags, diag.Diagnostic{
-				Severity: diag.Error,
-				Summary:  "Unable to create a Prismatic client",
-				Detail:   "Unable to create a Prismatic client without a url.",
-			})
-		}
-		if token == "" && refreshToken == "" {
-			diags = append(diags, diag.Diagnostic{
-				Severity: diag.Error,
-				Summary:  "Unable to create a Prismatic client",
-				Detail:   "Unable to create a Prismatic client without an authorization token or a refresh token. Please either pass in an authorization token or a refresh_token to the Prismatic provider. Optionally, you can set a environment variable, PRISMATIC_TOKEN or PRISMATIC_REFRESH_TOKEN",
-			})
-		}
-
-		if diags != nil && diags.HasError() {
-			return nil, diags
-		}
-
-		u, err := url.Parse(baseUrl)
-		if err != nil {
-			return nil, diag.FromErr(err)
-		}
-
-		if refreshToken != "" {
-			accessToken, err := refreshAccessToken(u, RefreshTokenRequest{RefreshToken: refreshToken, TenantId: tenantId})
-			if err != nil {
-				return nil, diag.FromErr(err)
-			}
-			token = *accessToken
-		}
-
-		u.Path = "api"
-		apiUrl := u.String()
-
-		src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
-		httpClient := oauth2.NewClient(context.Background(), src)
-
-		client := graphql.NewClient(apiUrl, httpClient)
-		return client, diags
+func (p *prismaticProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Attributes: map[string]schema.Attribute{
+			"url": schema.StringAttribute{
+				Optional:    true,
+				Description: "URL of the Prismatic stack to communicate with. Defaults to the value of the `PRISMATIC_URL` environment variable.",
+			},
+			"token": schema.StringAttribute{
+				Optional:           true,
+				Sensitive:          true,
+				DeprecationMessage: "Access token use has been deprecated in favor of using refresh tokens. Please migrate provider configuration to use the new refresh_token attribute instead.",
+				Description:        "An [access token obtained with Prism CLI](https://prismatic.io/docs/cli/prism/#metoken) of Prismatic API calls.",
+			},
+			"refresh_token": schema.StringAttribute{
+				Optional:    true,
+				Sensitive:   true,
+				Description: "A [refresh token to use for headless authentication](https://prismatic.io/docs/cli/bash-scripting/#headless-prism-usage-for-cicd-pipelines) to the Prismatic API.",
+			},
+			"tenant_id": schema.StringAttribute{
+				Optional:    true,
+				Description: "The [tenant ID to authenticate against](https://prismatic.io/docs/cli/bash-scripting/#headless-prism-usage-for-cicd-pipelines) when a refresh token grants access to multiple tenants. If omitted, it is left out of the token exchange.",
+			},
+		},
 	}
 }
 
-func refreshAccessToken(baseUrl *url.URL, refreshToken RefreshTokenRequest) (*string, error) {
-	baseUrl.Path = "/auth/refresh"
-	apiUrl := baseUrl.String()
+func (p *prismaticProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+	var config providerModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	body, err := json.Marshal(refreshToken)
+	// Each value falls back from its configured attribute to the environment, then
+	// to the documented default.
+	baseUrl := stringWithEnvFallback(config.Url, "PRISMATIC_URL", "https://app.prismatic.io")
+	token := stringWithEnvFallback(config.Token, "PRISMATIC_TOKEN", "")
+	refreshToken := stringWithEnvFallback(config.RefreshToken, "PRISMATIC_REFRESH_TOKEN", "")
+	tenantId := stringWithEnvFallback(config.TenantId, "PRISMATIC_TENANT_ID", "")
+
+	if baseUrl == "" {
+		resp.Diagnostics.AddError("Unable to create a Prismatic client", "Unable to create a Prismatic client without a url.")
+	}
+	if token == "" && refreshToken == "" {
+		resp.Diagnostics.AddError("Unable to create a Prismatic client", "Unable to create a Prismatic client without an authorization token or a refresh token. Please either pass in an authorization token or a refresh_token to the Prismatic provider. Optionally, you can set a environment variable, PRISMATIC_TOKEN or PRISMATIC_REFRESH_TOKEN")
+	}
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	client, err := newGraphQLClient(baseUrl, token, refreshToken, tenantId)
 	if err != nil {
-		return nil, err
+		resp.Diagnostics.AddError("Unable to create a Prismatic client", err.Error())
+		return
 	}
 
-	resp, err := http.Post(apiUrl, "application/json", bytes.NewBuffer(body))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+	resp.ResourceData = client
+	resp.DataSourceData = client
+}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to refresh access token: %s", resp.Status)
+func (p *prismaticProvider) Resources(ctx context.Context) []func() resource.Resource {
+	return []func() resource.Resource{
+		func() resource.Resource { return &componentResource{} },
+		func() resource.Resource { return &integrationResource{} },
+		func() resource.Resource { return &organizationSigningKeyResource{} },
+		func() resource.Resource { return &organizationUserResource{} },
 	}
+}
 
-	var result struct {
-		AccessToken string `json:"access_token"`
+func (p *prismaticProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
+	return []func() datasource.DataSource{
+		func() datasource.DataSource { return &authenticatedUserDataSource{} },
+		func() datasource.DataSource { return &componentBundleDataSource{} },
+		func() datasource.DataSource { return &componentsDataSource{} },
+		func() datasource.DataSource { return &integrationsDataSource{} },
+		func() datasource.DataSource { return &organizationRolesDataSource{} },
+		func() datasource.DataSource { return &organizationSigningKeyDataSource{} },
+		func() datasource.DataSource { return &usersDataSource{} },
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
+}
 
-	return &result.AccessToken, nil
+func stringWithEnvFallback(v types.String, env, fallback string) string {
+	if !v.IsNull() && !v.IsUnknown() {
+		return v.ValueString()
+	}
+	if e := os.Getenv(env); e != "" {
+		return e
+	}
+	return fallback
 }

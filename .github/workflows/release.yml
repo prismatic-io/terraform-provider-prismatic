@@ -26,13 +26,13 @@ jobs:
       tag: ${{ steps.bump.outputs.tag }}
     steps:
       - name: Checkout main
-        uses: actions/checkout@v6.0.3
+        uses: actions/checkout@v7.0.0
         with:
           ref: main
           fetch-depth: 0
 
       - name: Set up tools via mise
-        uses: jdx/mise-action@v4.1.0
+        uses: jdx/mise-action@v4.2.0
 
       - name: Compute and push tag
         id: bump
@@ -57,13 +57,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.3
+        uses: actions/checkout@v7.0.0
         with:
           ref: ${{ needs.tag.outputs.tag }}
           fetch-depth: 0
 
       - name: Set up tools via mise
-        uses: jdx/mise-action@v4.1.0
+        uses: jdx/mise-action@v4.2.0
 
       - name: Import GPG key
         uses: crazy-max/ghaction-import-gpg@v7.0.0

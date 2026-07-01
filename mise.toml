@@ -2,6 +2,9 @@
 go = "1.26.4"
 node = "26"
 terraform = "1.15.7"
+opentofu = "1.12.3"
+# asdf backend: mise's default aqua backend ships a bad pulumi checksum on darwin/arm64.
+"asdf:pulumi" = "3.202.0"
 "github-cli" = "2.95.0"
 golangci-lint = "2.12.2"
 goreleaser = "2.16.0"
@@ -46,7 +49,7 @@ env = { TF_ACC = "1" }
 run = "go test ./... -v -timeout 10m"
 
 [tasks."testacc:prism"]
-description = "Run acceptance tests, sourcing URL/token/tenant from prism (FORCE=1 skips the confirmation prompt)"
+description = "Run acceptance tests, sourcing URL/token/tenant from prism (FORCE=1 skips the prompt; PRISM_TARGET picks the task: testacc|testacc:tofu|testpulumi|testacc:all)"
 run = '''
 command -v prism >/dev/null 2>&1 || { echo "prism CLI not found on PATH — install it and run 'prism login'."; exit 1; }
 
@@ -76,8 +79,70 @@ export PRISMATIC_REFRESH_TOKEN="$refresh_token"
 tenant="$(printf '%s\n' "$me" | sed -n 's/^Tenant ID: //p')"
 [ -n "$tenant" ] && export PRISMATIC_TENANT_ID="$tenant"
 
-mise run testacc
+mise run "${PRISM_TARGET:-testacc}"
 '''
+
+[tasks."smoke:schema"]
+description = "Prove the provider serves its schema under $ENGINE (terraform|tofu) via dev_overrides — no API, no secrets"
+run = '''
+set -eu
+ENGINE="${ENGINE:-terraform}"
+mkdir -p bin/smoke
+go build -o "$PWD/bin/terraform-provider-prismatic" .
+
+cat > bin/dev.tfrc <<EOF
+provider_installation {
+  dev_overrides {
+    "registry.terraform.io/prismatic-io/prismatic" = "$PWD/bin"
+  }
+  direct {}
+}
+EOF
+export TF_CLI_CONFIG_FILE="$PWD/bin/dev.tfrc"
+
+cat > bin/smoke/main.tf <<'EOF'
+terraform {
+  required_providers {
+    prismatic = { source = "registry.terraform.io/prismatic-io/prismatic" }
+  }
+}
+provider "prismatic" {}
+EOF
+
+( cd bin/smoke && "$ENGINE" providers schema -json > /dev/null )
+echo "OK: provider serves its schema under $ENGINE"
+'''
+
+[tasks."testacc:tofu"]
+description = "Run the acceptance suite against OpenTofu instead of Terraform (needs a live Prismatic API; tofu comes from mise)"
+env = { TF_ACC = "1", TF_ACC_PROVIDER_HOST = "registry.opentofu.org", TF_ACC_PROVIDER_NAMESPACE = "hashicorp" }
+run = '''
+set -eu
+export TF_ACC_TERRAFORM_PATH="$(command -v tofu)"
+go test ./... -v -timeout 10m
+'''
+
+[tasks.testpulumi]
+description = "Pulumi CRUD round-trip against a live Prismatic API (pulumitest), bridging the freshly-built local provider"
+env = { PULUMI_ACC = "1", PULUMI_SKIP_UPDATE_CHECK = "true" }
+run = "go test ./pulumi-acc/... -v -timeout 20m"
+
+[tasks."testacc:all"]
+description = "Run every acceptance suite serially — Terraform, then OpenTofu, then Pulumi (needs a live Prismatic API; stops at the first failure)"
+run = '''
+set -eu
+: "${PRISMATIC_URL:?set PRISMATIC_URL, or source creds from prism with: mise run testacc:all:prism}"
+[ -n "${PRISMATIC_TOKEN:-}" ] || [ -n "${PRISMATIC_REFRESH_TOKEN:-}" ] || { echo "set PRISMATIC_TOKEN or PRISMATIC_REFRESH_TOKEN (or source creds from prism with: mise run testacc:all:prism)"; exit 1; }
+
+mise run testacc
+mise run testacc:tofu
+mise run testpulumi
+'''
+
+[tasks."testacc:all:prism"]
+description = "Run every acceptance suite serially (Terraform, OpenTofu, Pulumi), sourcing URL/token/tenant from prism"
+env = { PRISM_TARGET = "testacc:all" }
+run = "mise run testacc:prism"
 
 [tasks.docs]
 description = "Format examples and regenerate registry docs via tfplugindocs"

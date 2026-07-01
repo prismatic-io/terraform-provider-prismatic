@@ -1,0 +1,22 @@
+name: Engine Smoke
+on: [pull_request, push]
+permissions:
+  contents: read
+jobs:
+  smoke:
+    name: schema serve (${{ matrix.engine }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [terraform, tofu]
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v7.0.0
+      - name: Set up tools via mise
+        uses: jdx/mise-action@v4.2.0
+      - name: Serve-check schema under ${{ matrix.engine }}
+        run: mise run smoke:schema
+        env:
+          ENGINE: ${{ matrix.engine }}

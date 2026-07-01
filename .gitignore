@@ -13,6 +13,12 @@ dist/
 *.tfplan
 .terraform
 
+# Pulumi acceptance harness — generated/transient (see pulumi-acc/README.md)
+pulumi-acc/Pulumi.*.yaml
+pulumi-acc/sdks/
+pulumi-acc/node_modules/
+pulumi-acc/package-lock.json
+
 # Ignore IDE files
 .idea
 .claude/settings.local.json

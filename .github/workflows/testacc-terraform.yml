@@ -1,0 +1,27 @@
+name: Acceptance (Terraform)
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 13 * * 1"
+permissions:
+  contents: read
+concurrency:
+  # Shared so the three live suites serialize; keep their crons staggered so queued runs aren't cancelled.
+  group: prismatic-live-acc
+  cancel-in-progress: false
+jobs:
+  acc:
+    name: acceptance against Terraform (live API)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v7.0.0
+      - name: Set up tools via mise
+        uses: jdx/mise-action@v4.2.0
+      - name: Run acceptance suite (Terraform)
+        run: mise run testacc
+        env:
+          PRISMATIC_URL: ${{ secrets.PRISMATIC_URL }}
+          PRISMATIC_REFRESH_TOKEN: ${{ secrets.PRISMATIC_REFRESH_TOKEN }}
+          PRISMATIC_TENANT_ID: ${{ secrets.PRISMATIC_TENANT_ID }}

@@ -1,11 +1,11 @@
 [tools]
 go = "1.26.4"
-node = "24"
-terraform = "1.15.6"
+node = "26"
+terraform = "1.15.7"
 "github-cli" = "2.95.0"
 golangci-lint = "2.12.2"
 goreleaser = "2.16.0"
-svu = "3.4.0"
+svu = "3.4.1"
 "go:github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs" = "0.25.0"
 
 [tasks.build]
@@ -43,7 +43,7 @@ run = "go test ./... -timeout 120m"
 [tasks.testacc]
 description = "Run acceptance tests against a live Prismatic API"
 env = { TF_ACC = "1" }
-run = "go test ./... -v -timeout 120m"
+run = "go test ./... -v -timeout 10m"
 
 [tasks."testacc:prism"]
 description = "Run acceptance tests, sourcing URL/token/tenant from prism (FORCE=1 skips the confirmation prompt)"

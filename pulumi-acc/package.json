@@ -1,0 +1,14 @@
+{
+  "name": "prismatic-acc",
+  "main": "index.ts",
+  "private": true,
+  "description": "Pulumi acceptance round-trip for terraform-provider-prismatic (see README.md).",
+  "dependencies": {
+    "@pulumi/prismatic": "file:sdks/prismatic",
+    "@pulumi/pulumi": "^3.130.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.6"
+  }
+}

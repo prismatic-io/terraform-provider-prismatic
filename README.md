@@ -8,6 +8,10 @@ Terraform Provider for the [Prismatic](https://prismatic.io/) platform.
 
 This provider requires **Terraform 1.0 or later** and is built on the [Terraform Plugin Framework](https://developer.hashicorp.com/terraform/plugin/framework).
 
+It is also compatible with **[OpenTofu](https://opentofu.org/) 1.6 or later**, and is published to both the
+[Terraform Registry](https://registry.terraform.io/providers/prismatic-io/prismatic) and the
+[OpenTofu Registry](https://search.opentofu.org/provider/prismatic-io/prismatic/latest).
+
 Terraform uses the [Terraform Registry](https://registry.terraform.io/) to download and install providers. To install this provider, copy and paste the following into your Terraform configuration and run `terraform init`.
 
 ```tf

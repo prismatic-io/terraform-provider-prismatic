@@ -1,0 +1,10 @@
+name: prismatic-acc
+runtime: nodejs
+description: Pulumi CRUD round-trip that bridges the locally-built prismatic provider against a live API.
+# `pulumi install` regenerates sdks/prismatic from this block. The relative path resolves from this
+# directory (../bin), where the acceptance test builds the provider binary.
+packages:
+  prismatic:
+    source: terraform-provider
+    parameters:
+      - ../bin/terraform-provider-prismatic

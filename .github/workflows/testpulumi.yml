@@ -15,9 +15,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
       - name: Set up tools via mise
-        uses: jdx/mise-action@v4.2.0
+        uses: jdx/mise-action@v4.2.1
       - name: Pulumi acceptance round-trip
         run: mise run testpulumi
         env:

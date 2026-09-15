@@ -1,6 +1,6 @@
 module github.com/prismatic-io/terraform-provider-prismatic
 
-go 1.25.8
+go 1.26.0
 
 toolchain go1.26.4
 
@@ -10,7 +10,7 @@ require (
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
 	github.com/pulumi/providertest v0.7.0
 	github.com/shurcooL/graphql v0.0.0-20240915155400-7ee5256398cf
-	golang.org/x/oauth2 v0.36.0
+	golang.org/x/oauth2 v0.37.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

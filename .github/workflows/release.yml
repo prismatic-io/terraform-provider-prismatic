@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up tools via mise
-        uses: jdx/mise-action@v5.0.1
+        uses: jdx/mise-action@v5.1.1
 
       - name: Compute and push tag
         id: bump
@@ -63,7 +63,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up tools via mise
-        uses: jdx/mise-action@v5.0.1
+        uses: jdx/mise-action@v5.1.1
 
       - name: Import GPG key
         uses: crazy-max/ghaction-import-gpg@v7.0.0

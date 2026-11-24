@@ -10,7 +10,7 @@ require (
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
 	github.com/pulumi/providertest v0.7.0
 	github.com/shurcooL/graphql v0.0.0-20240915155400-7ee5256398cf
-	golang.org/x/oauth2 v0.37.0
+	golang.org/x/oauth2 v0.38.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
